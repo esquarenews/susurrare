@@ -12,7 +12,10 @@ export const ModeSchema = z.object({
       pinnedModelId: z.string().optional(),
     })
     .default({ selection: 'fast' }),
-  vocabularySetIds: z.array(z.string()).default([]),
+  streamingEnabled: z.boolean().default(true),
+  punctuationNormalization: z.boolean().optional(),
+  insertionBehavior: z.enum(['insert', 'clipboard']).default('insert'),
+  vocabularySetIds: z.array(z.string()).default(['global', 'mode']),
   createdAt: z.number(),
   updatedAt: z.number(),
 });
@@ -22,6 +25,7 @@ export const HistoryItemSchema = z.object({
   id: z.string(),
   text: z.string(),
   createdAt: z.number(),
+  pinned: z.boolean().default(false),
   modeId: z.string().optional(),
   modelId: z.string().optional(),
 });

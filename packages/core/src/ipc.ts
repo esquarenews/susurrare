@@ -26,6 +26,17 @@ export const DiagnosticsExportSchema = z.object({
 });
 export type DiagnosticsExport = z.infer<typeof DiagnosticsExportSchema>;
 
+export const HistoryPinSchema = z.object({
+  id: z.string(),
+  pinned: z.boolean(),
+});
+export type HistoryPin = z.infer<typeof HistoryPinSchema>;
+
+export const HistoryExportSchema = z.object({
+  ids: z.array(z.string()),
+});
+export type HistoryExport = z.infer<typeof HistoryExportSchema>;
+
 export const IpcChannels = {
   recordingCommand: 'recording:command',
   transcriptionEvent: 'transcription:event',
@@ -33,6 +44,14 @@ export const IpcChannels = {
   historyList: 'history:list',
   historyAdd: 'history:add',
   historyDelete: 'history:delete',
+  historyPin: 'history:pin',
+  historyExport: 'history:export',
+  modesList: 'modes:list',
+  modesSave: 'modes:save',
+  modesDelete: 'modes:delete',
+  vocabularyList: 'vocabulary:list',
+  vocabularySave: 'vocabulary:save',
+  vocabularyDelete: 'vocabulary:delete',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
   modelsList: 'models:list',

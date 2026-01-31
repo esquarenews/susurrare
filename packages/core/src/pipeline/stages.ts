@@ -8,7 +8,8 @@ export const whitespaceNormalizationStage: PipelineStage = {
 
 export const punctuationNormalizationStage: PipelineStage = {
   id: 'punctuation-normalization',
-  enabled: (context) => context.settings.punctuationNormalization,
+  enabled: (context) =>
+    context.mode?.punctuationNormalization ?? context.settings.punctuationNormalization,
   run: (input) =>
     input
       .replace(/\s+([,.;!?])/g, '$1')

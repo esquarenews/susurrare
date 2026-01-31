@@ -8,3 +8,4 @@ export * from './pipeline/pipeline';
 export * from './transcription/types';
 export * from './transcription/client';
 export * from './telemetry/types';
+export * from './recording/stateMachine';
