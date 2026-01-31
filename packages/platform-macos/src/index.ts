@@ -2,41 +2,60 @@ import type { PlatformAdapter } from '@susurrare/platform';
 
 export const macosAdapter: PlatformAdapter = {
   hotkey: {
-    async registerPushToTalk() {
+    async registerHotkey() {
       // TODO: implement with native hotkey binding
-    },
-    async unregisterPushToTalk() {
-      // TODO: implement with native hotkey binding
+      return {
+        async unregister() {
+          // TODO: implement with native hotkey binding
+        },
+      };
     },
   },
-  audio: {
-    async startCapture() {
+  audioCapture: {
+    async start() {
       // TODO: implement audio capture
+      const iterable: AsyncIterable<{ data: Uint8Array; timestamp: number }> = {
+        async *[Symbol.asyncIterator]() {
+          // no chunks yet
+        },
+      };
+      return iterable;
     },
-    async stopCapture() {
-      return new Uint8Array();
+    async stop() {
+      return { data: new Uint8Array(), durationMs: 0 };
     },
-    async cancelCapture() {
+    async cancel() {
       // TODO: implement cancel
     },
   },
-  clipboard: {
-    async pasteText() {
-      // TODO: implement paste into focused input
+  insertText: {
+    async atCursor() {
+      // TODO: implement accessibility insertion
+      return { success: false, method: 'clipboard' };
     },
-    async writeText() {
+  },
+  clipboard: {
+    async set() {
       // TODO: implement clipboard write
+    },
+    async get() {
+      return '';
     },
   },
   overlay: {
-    async showRecording() {
-      // TODO: implement overlay window
-    },
-    async showProcessing() {
+    async show() {
       // TODO: implement overlay window
     },
     async hide() {
       // TODO: implement overlay window
+    },
+  },
+  permissions: {
+    async check() {
+      return { microphone: 'prompt', accessibility: 'prompt' };
+    },
+    async requestGuidance() {
+      return 'Open System Settings > Privacy & Security to grant microphone and accessibility access.';
     },
   },
 };

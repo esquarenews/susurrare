@@ -9,5 +9,5 @@ susurrare
 - Format: `pnpm format`
 
 ## Tests
-- Run all: `pnpm test`
-- Watch (test harness): `pnpm -C packages/test-harness dev`
+- Run all (lint + typecheck + tests): `pnpm test`
+- Watch unit tests only: `pnpm -C packages/test-harness dev`

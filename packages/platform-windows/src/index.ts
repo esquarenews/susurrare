@@ -2,41 +2,48 @@ import type { PlatformAdapter } from '@susurrare/platform';
 
 export const windowsAdapter: PlatformAdapter = {
   hotkey: {
-    async registerPushToTalk() {
-      // TODO: implement Windows hotkey binding
-    },
-    async unregisterPushToTalk() {
-      // TODO: implement Windows hotkey binding
+    async registerHotkey() {
+      throw new Error('Not Implemented');
     },
   },
-  audio: {
-    async startCapture() {
-      // TODO: implement audio capture
+  audioCapture: {
+    async start() {
+      throw new Error('Not Implemented');
     },
-    async stopCapture() {
-      return new Uint8Array();
+    async stop() {
+      throw new Error('Not Implemented');
     },
-    async cancelCapture() {
-      // TODO: implement cancel
+    async cancel() {
+      throw new Error('Not Implemented');
+    },
+  },
+  insertText: {
+    async atCursor() {
+      throw new Error('Not Implemented');
     },
   },
   clipboard: {
-    async pasteText() {
-      // TODO: implement paste into focused input
+    async set() {
+      throw new Error('Not Implemented');
     },
-    async writeText() {
-      // TODO: implement clipboard write
+    async get() {
+      throw new Error('Not Implemented');
     },
   },
   overlay: {
-    async showRecording() {
-      // TODO: implement overlay window
-    },
-    async showProcessing() {
-      // TODO: implement overlay window
+    async show() {
+      throw new Error('Not Implemented');
     },
     async hide() {
-      // TODO: implement overlay window
+      throw new Error('Not Implemented');
+    },
+  },
+  permissions: {
+    async check() {
+      throw new Error('Not Implemented');
+    },
+    async requestGuidance() {
+      throw new Error('Not Implemented');
     },
   },
 };
