@@ -1,0 +1,40 @@
+{
+  "name": "susurrare",
+  "private": true,
+  "packageManager": "pnpm@9.12.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "pnpm -C apps/desktop dev",
+    "build": "pnpm -C apps/desktop build",
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier . --write",
+    "typecheck": "tsc -p apps/desktop/tsconfig.json --noEmit && tsc -p packages/core/tsconfig.json --noEmit && tsc -p packages/platform/tsconfig.json --noEmit && tsc -p packages/platform-macos/tsconfig.json --noEmit && tsc -p packages/platform-windows/tsconfig.json --noEmit && tsc -p packages/shared-ui/tsconfig.json --noEmit && tsc -p packages/test-harness/tsconfig.json --noEmit",
+    "test": "pnpm -C packages/test-harness test",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-react": "^7.35.0",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "husky": "^9.1.6",
+    "lint-staged": "^15.2.10",
+    "prettier": "^3.3.3",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "typescript": "5.5.4"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json,md}": [
+      "prettier --write"
+    ],
+    "*.{ts,tsx}": [
+      "eslint --fix"
+    ]
+  }
+}

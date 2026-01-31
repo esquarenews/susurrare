@@ -1,0 +1,11 @@
+{
+  "name": "@susurrare/shared-ui",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "react": "^18.3.1"
+  }
+}

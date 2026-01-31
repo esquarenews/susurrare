@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "apps/desktop" },
+    { "path": "packages/core" },
+    { "path": "packages/platform" },
+    { "path": "packages/platform-macos" },
+    { "path": "packages/platform-windows" },
+    { "path": "packages/shared-ui" },
+    { "path": "packages/test-harness" }
+  ]
+}

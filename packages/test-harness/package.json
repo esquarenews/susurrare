@@ -1,0 +1,16 @@
+{
+  "name": "@susurrare/test-harness",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "dev": "vitest"
+  },
+  "dependencies": {
+    "@susurrare/core": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0"
+  }
+}
