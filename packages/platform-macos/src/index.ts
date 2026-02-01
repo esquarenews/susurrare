@@ -1,3 +1,4 @@
+import { clipboard } from 'electron';
 import type { PlatformAdapter } from '@susurrare/platform';
 
 export const macosAdapter: PlatformAdapter = {
@@ -29,17 +30,18 @@ export const macosAdapter: PlatformAdapter = {
     },
   },
   insertText: {
-    async atCursor() {
-      // TODO: implement accessibility insertion
-      return { success: false, method: 'clipboard' };
+    async atCursor(text: string) {
+      clipboard.writeText(text);
+      // TODO: implement accessibility insertion to paste at cursor
+      return { success: true, method: 'clipboard' };
     },
   },
   clipboard: {
-    async set() {
-      // TODO: implement clipboard write
+    async set(text: string) {
+      clipboard.writeText(text);
     },
     async get() {
-      return '';
+      return clipboard.readText();
     },
   },
   overlay: {

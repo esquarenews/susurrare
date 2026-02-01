@@ -6,6 +6,7 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
-    "@susurrare/platform": "workspace:*"
+    "@susurrare/platform": "workspace:*",
+    "electron": "^31.3.1"
   }
 }
