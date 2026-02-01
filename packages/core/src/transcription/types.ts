@@ -10,6 +10,8 @@ export const TranscriptionEventSchema = z.object({
   kind: z.enum(['partial', 'final']),
   text: z.string(),
   timestamp: z.number(),
+  confidence: z.number().min(0).max(1).optional(),
+  language: z.string().optional(),
 });
 export type TranscriptionEvent = z.infer<typeof TranscriptionEventSchema>;
 
@@ -17,11 +19,23 @@ export interface TranscriptionRequest {
   audio: Uint8Array;
   model: ModelSelection;
   language?: string;
+  silenceRemoval?: boolean;
+  maxLatencyHintMs?: number;
+}
+
+export interface StreamingTranscriptionHandle {
+  sendAudio: (chunk: Uint8Array) => void;
+  finalize: () => Promise<void>;
+  cancel: () => void;
 }
 
 export interface TranscriptionClient {
   transcribe(request: TranscriptionRequest): Promise<TranscriptionEvent[]>;
   stream(request: TranscriptionRequest, onEvent: (event: TranscriptionEvent) => void): Promise<void>;
+  openStream?: (
+    request: TranscriptionRequest,
+    onEvent: (event: TranscriptionEvent) => void
+  ) => Promise<StreamingTranscriptionHandle>;
 }
 
 export type WebSocketLike = {

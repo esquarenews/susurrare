@@ -23,11 +23,26 @@ export type Mode = z.infer<typeof ModeSchema>;
 
 export const HistoryItemSchema = z.object({
   id: z.string(),
-  text: z.string(),
+  text: z.string().default(''),
   createdAt: z.number(),
   pinned: z.boolean().default(false),
   modeId: z.string().optional(),
   modelId: z.string().optional(),
+  rawText: z.string().optional(),
+  processedText: z.string().optional(),
+  wordCount: z.number().int().optional(),
+  latencyMs: z.number().int().optional(),
+  audioDurationMs: z.number().int().optional(),
+  insertion: z
+    .object({
+      outcome: z.enum(['inserted', 'clipboard', 'failed']),
+      method: z.enum(['accessibility', 'clipboard']).optional(),
+    })
+    .optional(),
+  status: z.enum(['success', 'failed', 'cancelled']).default('success'),
+  errorCode: z.string().optional(),
+  errorMessage: z.string().optional(),
+  processingSteps: z.array(z.string()).optional(),
 });
 export type HistoryItem = z.infer<typeof HistoryItemSchema>;
 

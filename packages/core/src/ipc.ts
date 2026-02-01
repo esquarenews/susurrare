@@ -26,6 +26,13 @@ export const DiagnosticsExportSchema = z.object({
 });
 export type DiagnosticsExport = z.infer<typeof DiagnosticsExportSchema>;
 
+export const RecordingStatusSchema = z.object({
+  status: z.enum(['idle', 'recording', 'processing', 'error']),
+  timestamp: z.number(),
+  message: z.string().optional(),
+});
+export type RecordingStatus = z.infer<typeof RecordingStatusSchema>;
+
 export const HistoryPinSchema = z.object({
   id: z.string(),
   pinned: z.boolean(),
@@ -41,7 +48,9 @@ export const IpcChannels = {
   recordingCommand: 'recording:command',
   transcriptionEvent: 'transcription:event',
   insertAction: 'insert:action',
+  recordingStatus: 'recording:status',
   historyList: 'history:list',
+  historyUpdated: 'history:updated',
   historyAdd: 'history:add',
   historyDelete: 'history:delete',
   historyPin: 'history:pin',
