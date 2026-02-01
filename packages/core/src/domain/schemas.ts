@@ -54,6 +54,7 @@ export const SettingsSchema = z.object({
   autoGain: z.boolean().default(false),
   soundEffects: z.boolean().default(true),
   soundEffectsVolume: z.number().min(0).max(100).default(65),
+  openAiApiKey: z.string().optional(),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 

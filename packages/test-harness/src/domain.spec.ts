@@ -20,6 +20,7 @@ describe('domain schemas', () => {
     expect(settings.pushToTalkKey).toBe('F15');
     expect(settings.cancelKey).toBe('Escape');
     expect(settings.launchOnLogin).toBe(true);
+    expect(settings.openAiApiKey).toBeUndefined();
   });
 
   it('parses core entities', () => {

@@ -24,9 +24,18 @@ export interface TranscriptionClient {
   stream(request: TranscriptionRequest, onEvent: (event: TranscriptionEvent) => void): Promise<void>;
 }
 
+export type WebSocketLike = {
+  onopen: ((ev: unknown) => void) | null;
+  onmessage: ((ev: { data: unknown }) => void) | null;
+  onclose: ((ev: unknown) => void) | null;
+  onerror: ((ev: unknown) => void) | null;
+  send: (data: Uint8Array) => void;
+  close: () => void;
+};
+
 export interface TranscriptionClientOptions {
   fetcher: typeof fetch;
-  websocketFactory: (url: string) => WebSocket;
+  websocketFactory: (url: string) => WebSocketLike;
   baseUrl: string;
   apiKey?: string;
 }

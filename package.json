@@ -12,7 +12,8 @@
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier . --write",
     "typecheck": "tsc -p apps/desktop/tsconfig.json --noEmit && tsc -p packages/core/tsconfig.json --noEmit && tsc -p packages/platform/tsconfig.json --noEmit && tsc -p packages/platform-macos/tsconfig.json --noEmit && tsc -p packages/platform-windows/tsconfig.json --noEmit && tsc -p packages/shared-ui/tsconfig.json --noEmit && tsc -p packages/test-harness/tsconfig.json --noEmit",
-    "test": "pnpm lint && pnpm typecheck && pnpm -C packages/test-harness test",
+    "test": "pnpm lint && pnpm typecheck && pnpm -C packages/test-harness test && pnpm test:e2e",
+    "test:e2e": "pnpm -C apps/desktop test:e2e",
     "prepare": "husky"
   },
   "devDependencies": {

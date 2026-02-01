@@ -68,7 +68,8 @@ export const createTranscriptionClient = (
     await new Promise<void>((resolve, reject) => {
       ws.onmessage = (message) => {
         try {
-          const parsed = JSON.parse(String(message.data)) as TranscriptionEvent;
+          const data = (message as { data?: unknown })?.data;
+          const parsed = JSON.parse(String(data ?? '')) as TranscriptionEvent;
           onEvent(parsed);
           if (parsed.kind === 'final') {
             resolve();
