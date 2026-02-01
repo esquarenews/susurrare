@@ -44,8 +44,16 @@ export type VocabularyEntry = z.infer<typeof VocabularyEntrySchema>;
 export const SettingsSchema = z.object({
   activeModeId: z.string().default('default'),
   pushToTalkKey: z.string().default('F15'),
+  cancelKey: z.string().default('Escape'),
+  changeModeShortcut: z.string().default('Shift+Cmd+K'),
   overlayStyle: z.enum(['classic', 'mini', 'none']).default('classic'),
   punctuationNormalization: z.boolean().default(true),
+  launchOnLogin: z.boolean().default(true),
+  updateChecks: z.boolean().default(true),
+  silenceRemoval: z.boolean().default(false),
+  autoGain: z.boolean().default(false),
+  soundEffects: z.boolean().default(true),
+  soundEffectsVolume: z.number().min(0).max(100).default(65),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 

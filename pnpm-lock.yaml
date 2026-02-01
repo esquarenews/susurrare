@@ -104,6 +104,13 @@ importers:
       '@susurrare/platform':
         specifier: workspace:*
         version: link:../platform
+      electron:
+        specifier: ^31.3.1
+        version: 31.7.7
+    devDependencies:
+      '@types/electron':
+        specifier: ^1.6.10
+        version: 1.6.12
 
   packages/platform-windows:
     dependencies:
@@ -579,6 +586,10 @@ packages:
 
   '@types/cacheable-request@6.0.3':
     resolution: {integrity: sha512-IQ3EbTzGxIigb1I3qPZc1rWJnH0BmSKv5QYTalEwweFvyBDLSAe24zP0le/hyi7ecGfZVlIVAg4BZqb8WBwKqw==}
+
+  '@types/electron@1.6.12':
+    resolution: {integrity: sha512-NIJokDkGv9h+MStCL1IuiL1FOHYVkszoWeNxJtSI5dcEKRGbX83JcVYNAgk019qOQgJkHtz9WdP0CDXvrArrGg==}
+    deprecated: This is a stub types definition. electron provides its own type definitions, so you do not need this installed.
 
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
@@ -2654,6 +2665,12 @@ snapshots:
       '@types/keyv': 3.1.4
       '@types/node': 22.19.7
       '@types/responselike': 1.0.3
+
+  '@types/electron@1.6.12':
+    dependencies:
+      electron: 31.7.7
+    transitivePeerDependencies:
+      - supports-color
 
   '@types/estree@1.0.8': {}
 

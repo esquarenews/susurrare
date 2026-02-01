@@ -8,5 +8,8 @@
   "dependencies": {
     "@susurrare/platform": "workspace:*",
     "electron": "^31.3.1"
+  },
+  "devDependencies": {
+    "@types/electron": "^1.6.10"
   }
 }

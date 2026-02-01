@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createRecordingStateMachine, type VocabularyEntry } from '@susurrare/core';
+import { createRecordingStateMachine, SettingsSchema, type VocabularyEntry } from '@susurrare/core';
 
 const makeDeps = () => {
   const events: string[] = [];
@@ -26,7 +26,7 @@ const makeDeps = () => {
         events.push(`history:${text}`);
       }),
       pipelineContext: {
-        settings: { punctuationNormalization: true, pushToTalkKey: 'F15', overlayStyle: 'classic', activeModeId: 'default' },
+        settings: SettingsSchema.parse({}),
         vocabulary: [] as VocabularyEntry[],
       },
     },
