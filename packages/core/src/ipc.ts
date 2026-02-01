@@ -52,6 +52,7 @@ export const IpcChannels = {
   vocabularyList: 'vocabulary:list',
   vocabularySave: 'vocabulary:save',
   vocabularyDelete: 'vocabulary:delete',
+  updateCheck: 'updates:check',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
   modelsList: 'models:list',
