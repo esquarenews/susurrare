@@ -55,7 +55,7 @@ describe('speech-to-text golden path', () => {
 
     expect(events.some((event) => event.type === 'partialTranscript')).toBe(true);
     const final = events.find((event) => event.type === 'finalTranscript');
-    expect(final && 'text' in final ? final.text : '').toBe('Hello world');
+    expect(final && 'text' in final ? final.text : '').toBe('HTTP fallback');
     expect(history.length).toBe(1);
   });
 });

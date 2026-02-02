@@ -19,6 +19,7 @@ export interface SpeechToTextDependencies {
   insertText: (text: string) => Promise<{ success: boolean; method: 'accessibility' | 'clipboard' }>;
   clipboard: (text: string) => Promise<void>;
   history: { add: (item: ReturnType<typeof HistoryItemSchema.parse>) => Promise<void> };
+  rewriteText?: (text: string, prompt: string) => Promise<string>;
   telemetry?: TelemetryStore;
   pipelineContext: PipelineContext;
   pipelineStages?: PipelineStage[];
@@ -346,11 +347,28 @@ export const createSpeechToTextSession = (
     }
 
     const pipelineStages = deps.pipelineStages ?? DEFAULT_PIPELINE;
-    const { text: processedText, stepsApplied } = applyPipeline(
+    let { text: processedText, stepsApplied } = applyPipeline(
       finalText ?? '',
       deps.pipelineContext,
       pipelineStages
     );
+    const rewritePrompt = deps.pipelineContext.mode?.rewritePrompt?.trim();
+    if (rewritePrompt && deps.rewriteText) {
+      try {
+        const rewritten = await deps.rewriteText(processedText, rewritePrompt);
+        if (rewritten && rewritten.trim()) {
+          processedText = rewritten.trim();
+          stepsApplied = [...stepsApplied, 'prompt-rewrite'];
+        }
+      } catch (error) {
+        emit({
+          type: 'error',
+          code: 'rewrite_failed',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     const processed: ProcessedTranscript = {
       text: processedText,
       wordCount: countWords(processedText),

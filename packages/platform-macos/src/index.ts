@@ -225,14 +225,14 @@ const overlayHtml = () => `
         justify-items: center;
         background: rgba(10, 14, 18, 0.7);
         border: 1px solid rgba(124, 255, 176, 0.28);
-        border-radius: 999px;
+        border-radius: 24px;
         backdrop-filter: blur(12px);
         box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
         transition: border-color 0.35s ease, box-shadow 0.35s ease;
       }
       canvas {
-        width: 220px;
-        height: 28px;
+        width: 260px;
+        height: 32px;
       }
       .status {
         font-size: 11px;
@@ -241,14 +241,24 @@ const overlayHtml = () => `
         transition: color 0.35s ease;
       }
       .partial {
-        font-size: 12px;
+        font-size: 12.5px;
+        line-height: 1.35;
         letter-spacing: 0.01em;
         opacity: 0.7;
-        max-width: 280px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        width: 100%;
+        justify-self: stretch;
+        max-width: 360px;
+        height: calc(1.35em * 3);
+        white-space: normal;
+        overflow-y: auto;
+        text-overflow: unset;
         text-align: center;
+        scrollbar-width: none;
+        transition: opacity 0.35s ease;
+      }
+      .partial::-webkit-scrollbar {
+        width: 0;
+        height: 0;
       }
       .partial[data-empty='true'] {
         opacity: 0;
@@ -264,6 +274,10 @@ const overlayHtml = () => `
       body[data-state='done'] .wrap {
         border-color: rgba(165, 123, 255, 0.4);
         box-shadow: 0 12px 30px rgba(54, 24, 96, 0.45);
+      }
+      body[data-state='done'] .partial,
+      body[data-state='processing'] .partial {
+        opacity: 0.35;
       }
     </style>
   </head>
@@ -287,7 +301,6 @@ const overlayHtml = () => `
         state = next;
         statusEl.textContent = next;
         document.body.dataset.state = next;
-        if (next !== 'recording') setText('');
       };
 
       const setWave = (next) => {
@@ -303,6 +316,7 @@ const overlayHtml = () => `
         partialText = next;
         partialEl.textContent = next;
         partialEl.dataset.empty = next ? 'false' : 'true';
+        partialEl.scrollTop = partialEl.scrollHeight;
       };
 
       const draw = () => {
@@ -353,8 +367,8 @@ const overlayHtml = () => `
 
 const ensureOverlayWindow = () => {
   if (overlayWindow) return;
-  const width = 320;
-  const height = 92;
+  const width = 420;
+  const height = 150;
   overlayWindow = new BrowserWindow({
     width,
     height,
