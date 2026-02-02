@@ -62,6 +62,7 @@ export const SettingsSchema = z.object({
   cancelKey: z.string().default('Escape'),
   changeModeShortcut: z.string().default('Shift+Cmd+K'),
   overlayStyle: z.enum(['classic', 'mini', 'none']).default('classic'),
+  theme: z.enum(['light', 'dark', 'system']).default('system'),
   punctuationNormalization: z.boolean().default(true),
   launchOnLogin: z.boolean().default(true),
   updateChecks: z.boolean().default(true),
