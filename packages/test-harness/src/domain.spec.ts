@@ -18,9 +18,11 @@ describe('domain schemas', () => {
   it('parses settings defaults', () => {
     const settings = SettingsSchema.parse({});
     expect(settings.pushToTalkKey).toBe('F15');
+    expect(settings.toggleRecordingKey).toBe('F14');
     expect(settings.cancelKey).toBe('Escape');
     expect(settings.launchOnLogin).toBe(true);
     expect(settings.theme).toBe('system');
+    expect(settings.transcriptionLanguage).toBe('en');
     expect(settings.openAiApiKey).toBeUndefined();
   });
 

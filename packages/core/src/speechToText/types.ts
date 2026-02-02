@@ -7,6 +7,7 @@ export const TranscriptionConfigSchema = z.object({
   language: z.string().optional(),
   silenceRemoval: z.boolean().optional(),
   maxLatencyHintMs: z.number().int().positive().optional(),
+  sampleRate: z.number().int().positive().optional(),
 });
 export type TranscriptionConfig = z.infer<typeof TranscriptionConfigSchema>;
 

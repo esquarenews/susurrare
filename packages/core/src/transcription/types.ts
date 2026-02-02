@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const ModelSelectionSchema = z.object({
-  selection: z.enum(['fast', 'accurate', 'pinned']),
+  selection: z.enum(['fast', 'accurate', 'meeting', 'pinned']),
   pinnedModelId: z.string().optional(),
 });
 export type ModelSelection = z.infer<typeof ModelSelectionSchema>;
@@ -21,6 +21,7 @@ export interface TranscriptionRequest {
   language?: string;
   silenceRemoval?: boolean;
   maxLatencyHintMs?: number;
+  sampleRate?: number;
 }
 
 export interface StreamingTranscriptionHandle {
@@ -43,7 +44,7 @@ export type WebSocketLike = {
   onmessage: ((ev: { data: unknown }) => void) | null;
   onclose: ((ev: unknown) => void) | null;
   onerror: ((ev: unknown) => void) | null;
-  send: (data: Uint8Array) => void;
+  send: (data: Uint8Array | string) => void;
   close: () => void;
 };
 

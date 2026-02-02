@@ -52,7 +52,9 @@ const resolveModelId = (model: TranscriptionConfig['model']) => {
     }
     return model.pinnedModelId;
   }
-  return model.selection === 'fast' ? 'gpt-4o-mini-transcribe' : 'gpt-4o-transcribe';
+  if (model.selection === 'fast') return 'gpt-4o-mini-transcribe';
+  if (model.selection === 'meeting') return 'gpt-4o-transcribe-diarize';
+  return 'gpt-4o-transcribe';
 };
 
 const applyPipeline = (
@@ -78,6 +80,7 @@ export const createSpeechToTextSession = (
   let startedAt = 0;
   let audioDurationMs = 0;
   let finalText: string | null = null;
+  let streamingText: string | null = null;
   let streamingHandle: Awaited<ReturnType<NonNullable<TranscriptionClient['openStream']>>> | null =
     null;
   let streamingFailed = false;
@@ -98,6 +101,7 @@ export const createSpeechToTextSession = (
     startedAt = 0;
     audioDurationMs = 0;
     finalText = null;
+    streamingText = null;
     streamingHandle = null;
     streamingFailed = false;
     streamingReady = null;
@@ -115,6 +119,7 @@ export const createSpeechToTextSession = (
         try {
           const parsed = TranscriptionEventSchema.parse(event);
           if (parsed.kind === 'partial') {
+            streamingText = parsed.text;
             emit({
               type: 'partialTranscript',
               text: parsed.text,
@@ -123,7 +128,13 @@ export const createSpeechToTextSession = (
             });
           }
           if (parsed.kind === 'final') {
-            finalText = parsed.text;
+            if (!finalText) {
+              finalText = parsed.text;
+            } else if (parsed.text.startsWith(finalText)) {
+              finalText = parsed.text;
+            } else if (!finalText.startsWith(parsed.text)) {
+              finalText = `${finalText} ${parsed.text}`.trim();
+            }
           }
         } catch {
           // ignore malformed streaming events
@@ -136,8 +147,13 @@ export const createSpeechToTextSession = (
           pendingChunks = [];
         }
       })
-      .catch(() => {
+      .catch((error) => {
         streamingFailed = true;
+        emit({
+          type: 'error',
+          code: 'streaming_unavailable',
+          message: error instanceof Error ? error.message : String(error),
+        });
       });
     await streamingReady;
   };
@@ -241,6 +257,7 @@ export const createSpeechToTextSession = (
     config = nextConfig;
     startedAt = now();
     finalText = null;
+    streamingText = null;
     streamingFailed = false;
     bufferedChunks.length = 0;
     pendingChunks = [];
@@ -251,6 +268,7 @@ export const createSpeechToTextSession = (
         language: config.language,
         silenceRemoval: config.silenceRemoval,
         maxLatencyHintMs: config.maxLatencyHintMs,
+        sampleRate: config.sampleRate,
       });
     }
   };
@@ -279,6 +297,7 @@ export const createSpeechToTextSession = (
           language: config.language,
           silenceRemoval: config.silenceRemoval,
           maxLatencyHintMs: config.maxLatencyHintMs,
+          sampleRate: config.sampleRate,
         }
       : {
           audio: concatChunks(bufferedChunks),
@@ -290,10 +309,30 @@ export const createSpeechToTextSession = (
         await streamingHandle.finalize();
       } catch (error) {
         streamingFailed = true;
+        emit({
+          type: 'error',
+          code: 'streaming_unavailable',
+          message: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
-    if (!finalText || streamingFailed) {
+    if (config?.streamingEnabled) {
+      try {
+        const events = await deps.transcription.transcribe(request);
+        const finalEvent = events.find((event) => event.kind === 'final');
+        if (finalEvent?.text) {
+          finalText = finalEvent.text;
+        }
+      } catch (error) {
+        if (!finalText && !streamingText) {
+          await finalizeWithError(error, 'transcription_failed');
+          reset();
+          state = 'idle';
+          return;
+        }
+      }
+    } else if (!finalText || streamingFailed) {
       try {
         const events = await deps.transcription.transcribe(request);
         const finalEvent = events.find((event) => event.kind === 'final');

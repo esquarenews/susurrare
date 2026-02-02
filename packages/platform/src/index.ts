@@ -14,6 +14,7 @@ export type HotkeyListener = (active: boolean) => void;
 export interface AudioChunk {
   data: Uint8Array;
   timestamp: number;
+  durationMs?: number;
 }
 
 export interface AudioBlob {
@@ -26,7 +27,7 @@ export interface HotkeyAdapter {
 }
 
 export interface AudioCaptureAdapter {
-  start(): Promise<AsyncIterable<AudioChunk>>;
+  start(options?: { autoGain?: boolean; sampleRate?: number }): Promise<AsyncIterable<AudioChunk>>;
   stop(): Promise<AudioBlob>;
   cancel(): Promise<void>;
 }
@@ -45,11 +46,16 @@ export interface ClipboardAdapter {
   get(): Promise<string>;
 }
 
-export type OverlayState = 'recording' | 'processing' | 'idle';
+export interface AppAdapter {
+  activeName(): Promise<string | null>;
+}
+
+export type OverlayState = 'recording' | 'processing' | 'done' | 'idle';
 
 export interface OverlayAdapter {
   show(state: OverlayState): Promise<void>;
   hide(): Promise<void>;
+  setText(text: string | null): Promise<void>;
 }
 
 export interface PermissionStatus {
@@ -67,6 +73,7 @@ export interface PlatformAdapter {
   audioCapture: AudioCaptureAdapter;
   insertText: InsertTextAdapter;
   clipboard: ClipboardAdapter;
+  app: AppAdapter;
   overlay: OverlayAdapter;
   permissions: PermissionsAdapter;
 }

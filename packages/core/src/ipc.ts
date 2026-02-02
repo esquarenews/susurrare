@@ -64,6 +64,7 @@ export const IpcChannels = {
   updateCheck: 'updates:check',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
+  helpOpen: 'help:open',
   modelsList: 'models:list',
   diagnosticsExport: 'diagnostics:export',
 } as const;

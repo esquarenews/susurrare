@@ -16,8 +16,10 @@ describe('platform windows adapter', () => {
     await expectNotImplemented(() => windowsAdapter.insertText.atCursor('hi'));
     await expectNotImplemented(() => windowsAdapter.clipboard.set('hi'));
     await expectNotImplemented(() => windowsAdapter.clipboard.get());
+    await expectNotImplemented(() => windowsAdapter.app.activeName());
     await expectNotImplemented(() => windowsAdapter.overlay.show('recording'));
     await expectNotImplemented(() => windowsAdapter.overlay.hide());
+    await expectNotImplemented(() => windowsAdapter.overlay.setText('test'));
     await expectNotImplemented(() => windowsAdapter.permissions.check());
     await expectNotImplemented(() => windowsAdapter.permissions.requestGuidance());
   });

@@ -30,11 +30,19 @@ export const windowsAdapter: PlatformAdapter = {
       throw new Error('Not Implemented');
     },
   },
+  app: {
+    async activeName() {
+      throw new Error('Not Implemented');
+    },
+  },
   overlay: {
     async show() {
       throw new Error('Not Implemented');
     },
     async hide() {
+      throw new Error('Not Implemented');
+    },
+    async setText() {
       throw new Error('Not Implemented');
     },
   },

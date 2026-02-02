@@ -8,7 +8,7 @@ export const ModeSchema = z.object({
   description: z.string().optional(),
   model: z
     .object({
-      selection: z.enum(['fast', 'accurate', 'pinned']),
+      selection: z.enum(['fast', 'accurate', 'meeting', 'pinned']),
       pinnedModelId: z.string().optional(),
     })
     .default({ selection: 'fast' }),
@@ -39,6 +39,7 @@ export const HistoryItemSchema = z.object({
       method: z.enum(['accessibility', 'clipboard']).optional(),
     })
     .optional(),
+  appName: z.string().optional(),
   status: z.enum(['success', 'failed', 'cancelled']).default('success'),
   errorCode: z.string().optional(),
   errorMessage: z.string().optional(),
@@ -59,10 +60,19 @@ export type VocabularyEntry = z.infer<typeof VocabularyEntrySchema>;
 export const SettingsSchema = z.object({
   activeModeId: z.string().default('default'),
   pushToTalkKey: z.string().default('F15'),
+  toggleRecordingKey: z.string().default('F14'),
   cancelKey: z.string().default('Escape'),
   changeModeShortcut: z.string().default('Shift+Cmd+K'),
-  overlayStyle: z.enum(['classic', 'mini', 'none']).default('classic'),
+  overlayStyle: z.preprocess(
+    (value) => {
+      if (value === 'classic' || value === 'mini') return 'show';
+      if (value === 'none') return 'hide';
+      return value;
+    },
+    z.enum(['show', 'hide']).default('show')
+  ),
   theme: z.enum(['light', 'dark', 'system']).default('system'),
+  transcriptionLanguage: z.string().default('en'),
   punctuationNormalization: z.boolean().default(true),
   launchOnLogin: z.boolean().default(true),
   updateChecks: z.boolean().default(true),
