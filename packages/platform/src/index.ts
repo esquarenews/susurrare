@@ -56,6 +56,7 @@ export interface OverlayAdapter {
   show(state: OverlayState): Promise<void>;
   hide(): Promise<void>;
   setText(text: string | null): Promise<void>;
+  setMode?(text: string | null): Promise<void>;
 }
 
 export interface PermissionStatus {

@@ -33,6 +33,12 @@ export const RecordingStatusSchema = z.object({
 });
 export type RecordingStatus = z.infer<typeof RecordingStatusSchema>;
 
+export const AppInfoSchema = z.object({
+  name: z.string(),
+  version: z.string(),
+});
+export type AppInfo = z.infer<typeof AppInfoSchema>;
+
 export const HistoryPinSchema = z.object({
   id: z.string(),
   pinned: z.boolean(),
@@ -65,6 +71,7 @@ export const IpcChannels = {
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
   helpOpen: 'help:open',
+  appInfo: 'app:info',
   modelsList: 'models:list',
   diagnosticsExport: 'diagnostics:export',
 } as const;

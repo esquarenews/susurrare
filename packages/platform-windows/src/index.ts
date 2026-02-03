@@ -45,6 +45,9 @@ export const windowsAdapter: PlatformAdapter = {
     async setText() {
       throw new Error('Not Implemented');
     },
+    async setMode() {
+      throw new Error('Not Implemented');
+    },
   },
   permissions: {
     async check() {

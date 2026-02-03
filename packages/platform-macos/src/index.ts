@@ -181,6 +181,7 @@ let currentRecording:
 let overlayWindow: BrowserWindow | null = null;
 let overlayState: 'recording' | 'processing' | 'done' = 'recording';
 let overlayText = '';
+let overlayMode = '';
 let overlayReady = false;
 let lastWaveSentAt = 0;
 
@@ -229,6 +230,21 @@ const overlayHtml = () => `
         backdrop-filter: blur(12px);
         box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
         transition: border-color 0.35s ease, box-shadow 0.35s ease;
+      }
+      .mode {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        opacity: 0.82;
+        transition: opacity 0.35s ease;
+      }
+      .mode[data-empty='true'] {
+        opacity: 0;
+        height: 0;
+        margin: 0;
+      }
+      .mode.pulse {
+        animation: modePulse 0.7s ease;
       }
       canvas {
         width: 260px;
@@ -279,10 +295,25 @@ const overlayHtml = () => `
       body[data-state='processing'] .partial {
         opacity: 0.35;
       }
+      @keyframes modePulse {
+        0% {
+          opacity: 0.25;
+          transform: translateY(-2px) scale(0.98);
+        }
+        40% {
+          opacity: 1;
+          transform: translateY(0) scale(1.02);
+        }
+        100% {
+          opacity: 0.85;
+          transform: translateY(0) scale(1);
+        }
+      }
     </style>
   </head>
   <body data-state="recording">
     <div class="wrap">
+      <div class="mode" id="mode" data-empty="true"></div>
       <canvas id="wave" width="220" height="28"></canvas>
       <div class="partial" id="partial" data-empty="true"></div>
       <div class="status" id="status">recording</div>
@@ -292,10 +323,12 @@ const overlayHtml = () => `
       const ctx = canvas.getContext('2d');
       const statusEl = document.getElementById('status');
       const partialEl = document.getElementById('partial');
+      const modeEl = document.getElementById('mode');
       let phase = 0;
       let state = 'recording';
       let wave = Array(32).fill(0);
       let partialText = '';
+      let modeText = '';
 
       const setState = (next) => {
         state = next;
@@ -317,6 +350,19 @@ const overlayHtml = () => `
         partialEl.textContent = next;
         partialEl.dataset.empty = next ? 'false' : 'true';
         partialEl.scrollTop = partialEl.scrollHeight;
+      };
+
+      const setMode = (text) => {
+        const next = typeof text === 'string' ? text : '';
+        const changed = next && next !== modeText;
+        modeText = next;
+        modeEl.textContent = next ? \`Mode: \${next}\` : '';
+        modeEl.dataset.empty = next ? 'false' : 'true';
+        if (changed) {
+          modeEl.classList.remove('pulse');
+          void modeEl.offsetWidth;
+          modeEl.classList.add('pulse');
+        }
       };
 
       const draw = () => {
@@ -359,6 +405,7 @@ const overlayHtml = () => `
       window.__setOverlayState = setState;
       window.__setOverlayWave = setWave;
       window.__setOverlayText = setText;
+      window.__setOverlayMode = setMode;
       draw();
     </script>
   </body>
@@ -408,6 +455,11 @@ const ensureOverlayWindow = () => {
           .executeJavaScript(`window.__setOverlayText(${JSON.stringify(overlayText)})`)
           .catch(() => undefined);
       }
+      if (overlayMode) {
+        overlayWindow.webContents
+          .executeJavaScript(`window.__setOverlayMode(${JSON.stringify(overlayMode)})`)
+          .catch(() => undefined);
+      }
     }
   });
 };
@@ -439,8 +491,15 @@ const updateOverlayText = async (text: string) => {
   overlayText = text;
   if (!overlayWindow || !overlayReady) return;
   if (!overlayWindow.isVisible()) return;
-  if (overlayState !== 'recording') return;
   const script = `window.__setOverlayText(${JSON.stringify(text)})`;
+  await overlayWindow.webContents.executeJavaScript(script);
+};
+
+const updateOverlayMode = async (text: string) => {
+  overlayMode = text;
+  if (!overlayWindow || !overlayReady) return;
+  if (!overlayWindow.isVisible()) return;
+  const script = `window.__setOverlayMode(${JSON.stringify(text)})`;
   await overlayWindow.webContents.executeJavaScript(script);
 };
 
@@ -697,6 +756,9 @@ export const macosAdapter: PlatformAdapter = {
         return;
       }
       await updateOverlayState(state);
+      if (overlayMode) {
+        await updateOverlayMode(overlayMode);
+      }
       overlayWindow.setOpacity(1);
       if (!overlayWindow.isVisible()) {
         overlayWindow.showInactive();
@@ -716,6 +778,10 @@ export const macosAdapter: PlatformAdapter = {
     async setText(text) {
       const value = text ?? '';
       await updateOverlayText(value);
+    },
+    async setMode(text) {
+      const value = text ?? '';
+      await updateOverlayMode(value);
     },
   },
   permissions: {
