@@ -1,5 +1,6 @@
 import type { PipelineContext, PipelineStage } from './types';
 import {
+  formattingCommandStage,
   keywordCommandStage,
   punctuationNormalizationStage,
   vocabularyReplacementStage,
@@ -8,6 +9,7 @@ import {
 
 export const DEFAULT_PIPELINE: PipelineStage[] = [
   whitespaceNormalizationStage,
+  formattingCommandStage,
   punctuationNormalizationStage,
   vocabularyReplacementStage,
   keywordCommandStage,
