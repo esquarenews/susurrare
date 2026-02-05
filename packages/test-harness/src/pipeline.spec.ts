@@ -46,6 +46,7 @@ describe('pipeline', () => {
           model: { selection: 'fast' },
           streamingEnabled: true,
           punctuationNormalization: true,
+          punctuationCommandsEnabled: false,
           formattingEnabled: true,
           formattingStyle: 'markdown',
           insertionBehavior: 'insert',

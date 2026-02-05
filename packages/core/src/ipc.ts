@@ -50,6 +50,32 @@ export const HistoryExportSchema = z.object({
 });
 export type HistoryExport = z.infer<typeof HistoryExportSchema>;
 
+export const StatsSummaryPointSchema = z.object({
+  label: z.string(),
+  value: z.number(),
+});
+export type StatsSummaryPoint = z.infer<typeof StatsSummaryPointSchema>;
+
+export const StatsSummarySeriesSchema = z.object({
+  id: z.enum(['averageSpeed', 'wordsThisWeek', 'appsUsed', 'savedThisWeek']),
+  label: z.string(),
+  unit: z.string(),
+  points: z.array(StatsSummaryPointSchema),
+});
+export type StatsSummarySeries = z.infer<typeof StatsSummarySeriesSchema>;
+
+export const StatsSummaryRequestSchema = z.object({
+  mode: z.enum(['rolling', 'calendar']),
+  series: z.array(StatsSummarySeriesSchema),
+});
+export type StatsSummaryRequest = z.infer<typeof StatsSummaryRequestSchema>;
+
+export const StatsSummaryResponseSchema = z.object({
+  summary: z.string().nullable(),
+  source: z.enum(['openai', 'unavailable', 'error']),
+});
+export type StatsSummaryResponse = z.infer<typeof StatsSummaryResponseSchema>;
+
 export const IpcChannels = {
   recordingCommand: 'recording:command',
   transcriptionEvent: 'transcription:event',
@@ -74,6 +100,7 @@ export const IpcChannels = {
   appInfo: 'app:info',
   modelsList: 'models:list',
   diagnosticsExport: 'diagnostics:export',
+  statsSummary: 'stats:summary',
 } as const;
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels];
