@@ -1,9 +1,10 @@
-import type { Mode, Settings, VocabularyEntry } from '../domain/schemas';
+import type { Mode, Settings, VocabularyEntry, ShortcutEntry } from '../domain/schemas';
 
 export interface PipelineContext {
   mode?: Mode;
   settings: Settings;
   vocabulary: VocabularyEntry[];
+  shortcuts: ShortcutEntry[];
 }
 
 export interface PipelineStage {

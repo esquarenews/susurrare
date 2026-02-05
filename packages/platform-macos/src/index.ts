@@ -246,7 +246,14 @@ const overlayHtml = () => `
       .mode.pulse {
         animation: modePulse 0.7s ease;
       }
+      .wave-wrap {
+        width: 260px;
+        height: 32px;
+        border-radius: 16px;
+        overflow: hidden;
+      }
       canvas {
+        display: block;
         width: 260px;
         height: 32px;
       }
@@ -314,7 +321,9 @@ const overlayHtml = () => `
   <body data-state="recording">
     <div class="wrap">
       <div class="mode" id="mode" data-empty="true"></div>
-      <canvas id="wave" width="220" height="28"></canvas>
+      <div class="wave-wrap">
+        <canvas id="wave" width="260" height="32"></canvas>
+      </div>
       <div class="partial" id="partial" data-empty="true"></div>
       <div class="status" id="status">recording</div>
     </div>
@@ -383,10 +392,16 @@ const overlayHtml = () => `
         } else {
           ctx.shadowBlur = 0;
         }
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, canvas.width, canvas.height);
+        ctx.clip();
         ctx.beginPath();
         const mid = canvas.height / 2;
         const maxAbs = wave.reduce((acc, value) => Math.max(acc, Math.abs(value)), 0);
-        const amp = state === 'recording' ? 12 + maxAbs * 42 : 0;
+        const maxAmp = Math.max(0, canvas.height / 2 - 3);
+        const amp =
+          state === 'recording' ? Math.min(maxAmp, 12 + maxAbs * 42) : 0;
         for (let x = 0; x <= canvas.width; x += 3) {
           const t = (x / canvas.width) * (wave.length - 1);
           const idx = Math.floor(t);
@@ -398,6 +413,7 @@ const overlayHtml = () => `
           else ctx.lineTo(x, y);
         }
         ctx.stroke();
+        ctx.restore();
         phase += 0.18;
         requestAnimationFrame(draw);
       };

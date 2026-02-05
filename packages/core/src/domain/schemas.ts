@@ -15,6 +15,7 @@ export const ModeSchema = z.object({
   streamingEnabled: z.boolean().default(true),
   punctuationNormalization: z.boolean().optional(),
   punctuationCommandsEnabled: z.boolean().default(false),
+  shortcutsEnabled: z.boolean().default(false),
   formattingEnabled: z.boolean().default(false),
   formattingStyle: z.enum(['plain', 'markdown', 'slack']).default('plain'),
   rewritePrompt: z.string().optional(),
@@ -60,6 +61,16 @@ export const VocabularyEntrySchema = z.object({
   modeId: z.string().optional(),
 });
 export type VocabularyEntry = z.infer<typeof VocabularyEntrySchema>;
+
+export const ShortcutEntrySchema = z.object({
+  id: z.string(),
+  keyword: z.string(),
+  snippet: z.string(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+  modeId: z.string().optional(),
+});
+export type ShortcutEntry = z.infer<typeof ShortcutEntrySchema>;
 
 export const SettingsSchema = z.object({
   activeModeId: z.string().default('default'),

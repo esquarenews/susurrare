@@ -322,10 +322,35 @@ const applyFormattingCommands = (
   return result.trim();
 };
 
+const normalizeShortcutToken = (value: string) =>
+  value
+    .trim()
+    .replace(/^[\s"'“”‘’()[\]{}<>]+|[\s"'“”‘’()[\]{}<>]+$/g, '')
+    .replace(/[.,!?;:]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+
+const applyShortcuts = (input: string, shortcuts: Array<{ keyword: string; snippet: string }>) => {
+  if (!input.trim()) return input;
+  const normalizedInput = normalizeShortcutToken(input);
+  if (!normalizedInput) return input;
+  const match = shortcuts.find(
+    (entry) => normalizeShortcutToken(entry.keyword) === normalizedInput
+  );
+  if (!match) return input;
+  return match.snippet;
+};
+
 export const whitespaceNormalizationStage: PipelineStage = {
   id: 'whitespace-normalization',
   enabled: () => true,
   run: (input) => input.replace(/\s+/g, ' ').trim(),
+};
+
+export const shortcutStage: PipelineStage = {
+  id: 'shortcuts',
+  enabled: (context) => Boolean(context.mode?.shortcutsEnabled && context.shortcuts.length),
+  run: (input, context) => applyShortcuts(input, context.shortcuts),
 };
 
 export const formattingCommandStage: PipelineStage = {

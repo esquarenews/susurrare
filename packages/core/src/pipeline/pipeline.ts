@@ -3,12 +3,14 @@ import {
   formattingCommandStage,
   keywordCommandStage,
   punctuationNormalizationStage,
+  shortcutStage,
   vocabularyReplacementStage,
   whitespaceNormalizationStage,
 } from './stages';
 
 export const DEFAULT_PIPELINE: PipelineStage[] = [
   whitespaceNormalizationStage,
+  shortcutStage,
   formattingCommandStage,
   punctuationNormalizationStage,
   vocabularyReplacementStage,

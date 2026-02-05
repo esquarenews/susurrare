@@ -10,6 +10,7 @@ import {
 describe('pipeline', () => {
   const context: PipelineContext = {
     settings: SettingsSchema.parse({ punctuationNormalization: true }),
+    shortcuts: [],
     vocabulary: [
       VocabularyEntrySchema.parse({
         id: '1',
@@ -47,6 +48,7 @@ describe('pipeline', () => {
           streamingEnabled: true,
           punctuationNormalization: true,
           punctuationCommandsEnabled: false,
+          shortcutsEnabled: false,
           formattingEnabled: true,
           formattingStyle: 'markdown',
           insertionBehavior: 'insert',
@@ -72,6 +74,7 @@ describe('pipeline', () => {
           streamingEnabled: true,
           punctuationNormalization: true,
           punctuationCommandsEnabled: false,
+          shortcutsEnabled: false,
           formattingEnabled: true,
           formattingStyle: 'markdown',
           insertionBehavior: 'insert',
@@ -97,6 +100,7 @@ describe('pipeline', () => {
           streamingEnabled: true,
           punctuationNormalization: true,
           punctuationCommandsEnabled: true,
+          shortcutsEnabled: false,
           formattingEnabled: false,
           formattingStyle: 'plain',
           insertionBehavior: 'insert',
@@ -108,5 +112,40 @@ describe('pipeline', () => {
       DEFAULT_PIPELINE
     );
     expect(output).toBe('hello, world.');
+  });
+
+  it('expands shortcuts only when the keyword is the entire input', () => {
+    const output = runPipeline(
+      'signature.',
+      {
+        ...context,
+        shortcuts: [
+          {
+            id: 'shortcut-1',
+            keyword: 'signature',
+            snippet: 'Kind regards, Alex',
+            createdAt: 0,
+            updatedAt: 0,
+          },
+        ],
+        mode: {
+          id: 'mode-shortcuts',
+          name: 'Shortcuts',
+          model: { selection: 'fast' },
+          streamingEnabled: true,
+          punctuationNormalization: true,
+          punctuationCommandsEnabled: false,
+          shortcutsEnabled: true,
+          formattingEnabled: false,
+          formattingStyle: 'plain',
+          insertionBehavior: 'insert',
+          vocabularySetIds: ['global'],
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      },
+      DEFAULT_PIPELINE
+    );
+    expect(output).toBe('Kind regards, Alex');
   });
 });

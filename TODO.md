@@ -7,6 +7,7 @@
 ## Next
 - Production packaging flow (electron-builder), signing + notarization, and update feed setup.
 - Expand formatting commands (more variants: “last sentence bold”, “capitalize next word”).
+- Voice command shortcuts (opt-in per mode) to trigger keystrokes like ⌘C/⌘V.
 - Add per‑mode output presets for Docs/Slack and surface guidance in UI.
 
 ## Later

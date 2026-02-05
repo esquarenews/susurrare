@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { runPipeline, SettingsSchema, VocabularyEntrySchema } from '@susurrare/core';
+import {
+  runPipeline,
+  SettingsSchema,
+  type ShortcutEntry,
+  VocabularyEntrySchema,
+} from '@susurrare/core';
 
 const context = {
   settings: SettingsSchema.parse({ punctuationNormalization: false }),
+  shortcuts: [] as ShortcutEntry[],
   vocabulary: [
     VocabularyEntrySchema.parse({
       id: '1',

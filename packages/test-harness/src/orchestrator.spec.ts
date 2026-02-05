@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createRecordingStateMachine, SettingsSchema, type VocabularyEntry } from '@susurrare/core';
+import {
+  createRecordingStateMachine,
+  SettingsSchema,
+  type ShortcutEntry,
+  type VocabularyEntry,
+} from '@susurrare/core';
 
 const makeDeps = () => {
   const clipboard: string[] = [];
@@ -29,10 +34,11 @@ const makeDeps = () => {
       saveHistory: vi.fn(async () => undefined),
       pipelineContext: {
         settings: SettingsSchema.parse({}),
+        shortcuts: [] as ShortcutEntry[],
         vocabulary: [] as VocabularyEntry[],
       },
     },
-  } as const;
+  };
 };
 
 describe('orchestrator flow with mocked platform', () => {

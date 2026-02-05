@@ -3,6 +3,7 @@ import {
   createSpeechToTextSession,
   SettingsSchema,
   type SpeechToTextEvent,
+  type ShortcutEntry,
   type TranscriptionClient,
   type VocabularyEntry,
 } from '@susurrare/core';
@@ -43,6 +44,7 @@ describe('speech-to-text golden path', () => {
       },
       pipelineContext: {
         settings: SettingsSchema.parse({}),
+        shortcuts: [] as ShortcutEntry[],
         vocabulary: [] as VocabularyEntry[],
       },
     });

@@ -1,4 +1,4 @@
-import type { HistoryItem, Mode, Settings, VocabularyEntry } from '../domain/schemas';
+import type { HistoryItem, Mode, Settings, VocabularyEntry, ShortcutEntry } from '../domain/schemas';
 
 export interface HistoryRepository {
   list(): Promise<HistoryItem[]>;
@@ -16,6 +16,13 @@ export interface ModesRepository {
 export interface VocabularyRepository {
   list(): Promise<VocabularyEntry[]>;
   save(entry: VocabularyEntry): Promise<void>;
+  remove(id: string): Promise<void>;
+  clearMode(modeId: string): Promise<void>;
+}
+
+export interface ShortcutsRepository {
+  list(): Promise<ShortcutEntry[]>;
+  save(entry: ShortcutEntry): Promise<void>;
   remove(id: string): Promise<void>;
   clearMode(modeId: string): Promise<void>;
 }
