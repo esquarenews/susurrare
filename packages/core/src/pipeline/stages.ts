@@ -344,7 +344,16 @@ const applyShortcuts = (input: string, shortcuts: Array<{ keyword: string; snipp
 export const whitespaceNormalizationStage: PipelineStage = {
   id: 'whitespace-normalization',
   enabled: () => true,
-  run: (input) => input.replace(/\s+/g, ' ').trim(),
+  run: (input) => {
+    if (!input.includes('\n') && !input.includes('\r')) {
+      return input.replace(/\s+/g, ' ').trim();
+    }
+    return input
+      .split(/\r?\n/)
+      .map((line) => line.replace(/\s+/g, ' ').trim())
+      .join('\n')
+      .trim();
+  },
 };
 
 export const shortcutStage: PipelineStage = {
@@ -368,12 +377,23 @@ export const punctuationNormalizationStage: PipelineStage = {
   id: 'punctuation-normalization',
   enabled: (context) =>
     context.mode?.punctuationNormalization ?? context.settings.punctuationNormalization,
-  run: (input) =>
-    input
-      .replace(/\s+([,.;!?])/g, '$1')
-      .replace(/\.{3,}/g, '...')
-      .replace(/\s{2,}/g, ' ')
-      .trim(),
+  run: (input) => {
+    const normalizeLine = (line: string) =>
+      line
+        .replace(/\s+([,.;!?])/g, '$1')
+        .replace(/\.{3,}/g, '...')
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim();
+
+    if (!input.includes('\n') && !input.includes('\r')) {
+      return normalizeLine(input);
+    }
+    return input
+      .split(/\r?\n/)
+      .map((line) => normalizeLine(line))
+      .join('\n')
+      .trim();
+  },
 };
 
 export const vocabularyReplacementStage: PipelineStage = {

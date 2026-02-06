@@ -1,4 +1,4 @@
-import { HistoryItemSchema } from '../domain/schemas';
+import { HistoryItemSchema, type DiarizedSegment } from '../domain/schemas';
 import { DEFAULT_PIPELINE } from '../pipeline/pipeline';
 import type { PipelineContext, PipelineStage } from '../pipeline/types';
 import type { TranscriptionClient, TranscriptionEvent } from '../transcription/types';
@@ -46,6 +46,36 @@ const countWords = (text: string) => {
   return trimmed.split(/\s+/).filter(Boolean).length;
 };
 
+const formatSpeakerLabel = (speaker: string | undefined, index: number) => {
+  if (!speaker) return `Speaker ${index + 1}`;
+  const trimmed = speaker.trim();
+  if (!trimmed) return `Speaker ${index + 1}`;
+  if (/^speaker[_\s]?\d+$/i.test(trimmed)) {
+    const number = trimmed.replace(/[^0-9]/g, '');
+    return number ? `Speaker ${Number(number) + 1}` : 'Speaker';
+  }
+  if (/^speaker\b/i.test(trimmed)) return trimmed;
+  return `Speaker ${trimmed}`;
+};
+
+const buildDiarizedTranscript = (segments: DiarizedSegment[]) => {
+  if (!segments.length) return '';
+  const lines: string[] = [];
+  let lastLabel = '';
+  segments.forEach((segment, index) => {
+    const label = formatSpeakerLabel(segment.speaker, index);
+    const text = segment.text.trim();
+    if (!text) return;
+    if (lines.length && label === lastLabel) {
+      lines[lines.length - 1] = `${lines[lines.length - 1]} ${text}`.trim();
+    } else {
+      lines.push(`${label}: ${text}`.trim());
+      lastLabel = label;
+    }
+  });
+  return lines.join('\n');
+};
+
 const resolveModelId = (model: TranscriptionConfig['model']) => {
   if (model.selection === 'pinned') {
     if (!model.pinnedModelId) {
@@ -82,6 +112,8 @@ export const createSpeechToTextSession = (
   let audioDurationMs = 0;
   let finalText: string | null = null;
   let streamingText: string | null = null;
+  let diarizedSegments: DiarizedSegment[] | null = null;
+  let rawTranscriptText: string | null = null;
   let streamingHandle: Awaited<ReturnType<NonNullable<TranscriptionClient['openStream']>>> | null =
     null;
   let streamingFailed = false;
@@ -103,6 +135,8 @@ export const createSpeechToTextSession = (
     audioDurationMs = 0;
     finalText = null;
     streamingText = null;
+    diarizedSegments = null;
+    rawTranscriptText = null;
     streamingHandle = null;
     streamingFailed = false;
     streamingReady = null;
@@ -135,6 +169,9 @@ export const createSpeechToTextSession = (
               finalText = parsed.text;
             } else if (!finalText.startsWith(parsed.text)) {
               finalText = `${finalText} ${parsed.text}`.trim();
+            }
+            if (parsed.segments?.length) {
+              diarizedSegments = parsed.segments;
             }
           }
         } catch {
@@ -198,8 +235,9 @@ export const createSpeechToTextSession = (
     const historyItem = HistoryItemSchema.parse({
       id: idFactory(),
       text: processed.text,
-      rawText: finalText ?? '',
+      rawText: rawTranscriptText ?? finalText ?? '',
       processedText: processed.text,
+      diarizedSegments: diarizedSegments ?? undefined,
       wordCount: processed.wordCount,
       processingSteps: processed.stepsApplied,
       createdAt: now(),
@@ -325,6 +363,9 @@ export const createSpeechToTextSession = (
         if (finalEvent?.text) {
           finalText = finalEvent.text;
         }
+        if (finalEvent?.segments?.length) {
+          diarizedSegments = finalEvent.segments;
+        }
       } catch (error) {
         if (!finalText && !streamingText) {
           await finalizeWithError(error, 'transcription_failed');
@@ -338,11 +379,23 @@ export const createSpeechToTextSession = (
         const events = await deps.transcription.transcribe(request);
         const finalEvent = events.find((event) => event.kind === 'final');
         finalText = finalEvent?.text ?? '';
+        if (finalEvent?.segments?.length) {
+          diarizedSegments = finalEvent.segments;
+        }
       } catch (error) {
         await finalizeWithError(error, 'transcription_failed');
         reset();
         state = 'idle';
         return;
+      }
+    }
+
+    rawTranscriptText = finalText ?? '';
+    if (diarizedSegments && diarizedSegments.length) {
+      const diarizedText = buildDiarizedTranscript(diarizedSegments);
+      if (diarizedText) {
+        rawTranscriptText = rawTranscriptText || diarizedText;
+        finalText = diarizedText;
       }
     }
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DiarizedSegmentSchema } from '../domain/schemas';
 
 export const ModelSelectionSchema = z.object({
   selection: z.enum(['fast', 'accurate', 'meeting', 'pinned']),
@@ -12,6 +13,7 @@ export const TranscriptionEventSchema = z.object({
   timestamp: z.number(),
   confidence: z.number().min(0).max(1).optional(),
   language: z.string().optional(),
+  segments: z.array(DiarizedSegmentSchema).optional(),
 });
 export type TranscriptionEvent = z.infer<typeof TranscriptionEventSchema>;
 

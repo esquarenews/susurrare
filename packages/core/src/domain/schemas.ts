@@ -26,6 +26,15 @@ export const ModeSchema = z.object({
 });
 export type Mode = z.infer<typeof ModeSchema>;
 
+export const DiarizedSegmentSchema = z.object({
+  id: z.string().optional(),
+  speaker: z.string().optional(),
+  start: z.number(),
+  end: z.number(),
+  text: z.string(),
+});
+export type DiarizedSegment = z.infer<typeof DiarizedSegmentSchema>;
+
 export const HistoryItemSchema = z.object({
   id: z.string(),
   text: z.string().default(''),
@@ -35,6 +44,7 @@ export const HistoryItemSchema = z.object({
   modelId: z.string().optional(),
   rawText: z.string().optional(),
   processedText: z.string().optional(),
+  diarizedSegments: z.array(DiarizedSegmentSchema).optional(),
   wordCount: z.number().int().optional(),
   latencyMs: z.number().int().optional(),
   audioDurationMs: z.number().int().optional(),

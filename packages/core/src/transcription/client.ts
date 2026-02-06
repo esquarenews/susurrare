@@ -7,6 +7,7 @@ import {
   type TranscriptionEvent,
   type TranscriptionRequest,
 } from './types';
+import type { DiarizedSegment } from '../domain/schemas';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -99,6 +100,27 @@ const resolveModel = (model: TranscriptionRequest['model']) => {
   return 'gpt-4o-transcribe';
 };
 
+const normalizeSegments = (value: unknown): DiarizedSegment[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const segments: DiarizedSegment[] = [];
+  value.forEach((segment) => {
+    if (!segment || typeof segment !== 'object') return;
+    const record = segment as Record<string, unknown>;
+    const start = Number(record.start);
+    const end = Number(record.end);
+    const text = typeof record.text === 'string' ? record.text : '';
+    if (!Number.isFinite(start) || !Number.isFinite(end) || !text) return;
+    segments.push({
+      id: typeof record.id === 'string' ? record.id : undefined,
+      speaker: typeof record.speaker === 'string' ? record.speaker : undefined,
+      start,
+      end,
+      text,
+    });
+  });
+  return segments.length ? segments : undefined;
+};
+
 export const createTranscriptionClient = (
   options: TranscriptionClientOptions,
   retryPolicy: RetryPolicy = RetryPolicySchema.parse({})
@@ -114,6 +136,10 @@ export const createTranscriptionClient = (
       const form = new FormData();
       form.append('file', new Blob([wav], { type: 'audio/wav' }), 'audio.wav');
       form.append('model', modelId);
+      if (modelId.includes('diarize')) {
+        form.append('response_format', 'diarized_json');
+        form.append('chunking_strategy', 'auto');
+      }
       if (request.language) form.append('language', request.language);
       const response = await options.fetcher(url, {
         method: 'POST',
@@ -128,9 +154,11 @@ export const createTranscriptionClient = (
       }
       const contentType = response.headers.get('content-type') ?? '';
       let text = '';
+      let segments: DiarizedSegment[] | undefined;
       if (contentType.includes('application/json')) {
-        const data = (await response.json()) as { text?: string };
+        const data = (await response.json()) as { text?: string; segments?: unknown };
         text = data.text ?? '';
+        segments = normalizeSegments(data.segments);
       } else {
         text = await response.text();
       }
@@ -139,6 +167,7 @@ export const createTranscriptionClient = (
           kind: 'final',
           text,
           timestamp: Date.now(),
+          ...(segments ? { segments } : {}),
         },
       ];
     }
