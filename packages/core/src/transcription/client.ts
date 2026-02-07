@@ -400,7 +400,9 @@ export const createTranscriptionClient = (
       };
     }
 
-    const ws = options.websocketFactory(`${options.baseUrl}/stream?model=${transcriptionModelId}`);
+    const ws = options.websocketFactory(
+      `${options.baseUrl}/stream?model=${encodeURIComponent(transcriptionModelId)}`
+    );
     let closed = false;
 
     const ready = new Promise<void>((resolve, reject) => {
