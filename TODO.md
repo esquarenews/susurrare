@@ -9,7 +9,6 @@
 - Expand formatting commands (more variants: “last sentence bold”, “capitalize next word”).
 - Voice command shortcuts (opt-in per mode) to trigger keystrokes like ⌘C/⌘V.
 - Add per‑mode output presets for Docs/Slack and surface guidance in UI.
-- Fix marketing site TODOs.
 
 ## Later
 - Rich‑text insertion for Google Docs/Word (type‑to‑convert or app‑specific automation).

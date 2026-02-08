@@ -2,11 +2,6 @@
   "name": "susurrare",
   "private": true,
   "packageManager": "pnpm@9.12.2",
-  "pnpm": {
-    "overrides": {
-      "esbuild": "^0.25.0"
-    }
-  },
   "workspaces": [
     "apps/*",
     "packages/*"
