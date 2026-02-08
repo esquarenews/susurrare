@@ -15,6 +15,7 @@ export interface AudioChunk {
   data: Uint8Array;
   timestamp: number;
   durationMs?: number;
+  rms?: number;
 }
 
 export interface AudioBlob {

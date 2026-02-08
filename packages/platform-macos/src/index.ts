@@ -263,6 +263,23 @@ const overlayHtml = () => `
         letter-spacing: 0.22em;
         transition: color 0.35s ease;
       }
+      .meta {
+        width: 100%;
+        max-width: 360px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 16px;
+      }
+      .timer {
+        font-size: 11px;
+        letter-spacing: 0.14em;
+        font-variant-numeric: tabular-nums;
+        opacity: 0.85;
+      }
+      .timer[data-visible='false'] {
+        visibility: hidden;
+      }
       .partial {
         font-size: 12.5px;
         line-height: 1.35;
@@ -325,24 +342,94 @@ const overlayHtml = () => `
         <canvas id="wave" width="260" height="32"></canvas>
       </div>
       <div class="partial" id="partial" data-empty="true"></div>
-      <div class="status" id="status">recording</div>
+      <div class="meta">
+        <div class="timer" id="timer" data-visible="false">00:00</div>
+        <div class="status" id="status">recording</div>
+      </div>
     </div>
     <script>
       const canvas = document.getElementById('wave');
       const ctx = canvas.getContext('2d');
       const statusEl = document.getElementById('status');
+      const timerEl = document.getElementById('timer');
       const partialEl = document.getElementById('partial');
       const modeEl = document.getElementById('mode');
       let phase = 0;
-      let state = 'recording';
+      let state = 'idle';
       let wave = Array(32).fill(0);
       let partialText = '';
       let modeText = '';
+      let timerAccumulatedMs = 0;
+      let timerStartedAt = 0;
+      let timerRunning = false;
+      let timerVisible = false;
+      let timerInterval = null;
+
+      const formatTimer = (milliseconds) => {
+        const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+      };
+
+      const currentTimerValue = () =>
+        timerRunning ? timerAccumulatedMs + (Date.now() - timerStartedAt) : timerAccumulatedMs;
+
+      const syncTimer = () => {
+        timerEl.textContent = formatTimer(currentTimerValue());
+        timerEl.dataset.visible = timerVisible ? 'true' : 'false';
+      };
+
+      const stopTimer = () => {
+        if (timerRunning) {
+          timerAccumulatedMs += Date.now() - timerStartedAt;
+          timerRunning = false;
+        }
+        if (timerInterval) {
+          clearInterval(timerInterval);
+          timerInterval = null;
+        }
+        syncTimer();
+      };
+
+      const startTimer = (reset) => {
+        if (reset) {
+          timerAccumulatedMs = 0;
+          timerVisible = true;
+        }
+        if (!timerRunning) {
+          timerStartedAt = Date.now();
+          timerRunning = true;
+        }
+        if (!timerInterval) {
+          timerInterval = setInterval(syncTimer, 200);
+        }
+        syncTimer();
+      };
+
+      const resetTimer = () => {
+        stopTimer();
+        timerAccumulatedMs = 0;
+        timerVisible = false;
+        syncTimer();
+      };
 
       const setState = (next) => {
+        const previous = state;
         state = next;
         statusEl.textContent = next;
         document.body.dataset.state = next;
+        if (next === 'recording') {
+          timerVisible = true;
+          startTimer(previous !== 'recording');
+        } else if (next === 'processing') {
+          timerVisible = true;
+          stopTimer();
+        } else if (next === 'idle') {
+          resetTimer();
+        } else {
+          stopTimer();
+        }
       };
 
       const setWave = (next) => {
@@ -422,6 +509,7 @@ const overlayHtml = () => `
       window.__setOverlayWave = setWave;
       window.__setOverlayText = setText;
       window.__setOverlayMode = setMode;
+      syncTimer();
       draw();
     </script>
   </body>
@@ -637,10 +725,10 @@ export const macosAdapter: PlatformAdapter = {
           async *[Symbol.asyncIterator]() {
             const emitFrame = async (frame: Uint8Array) => {
               const data = new Uint8Array(frame);
+              const rawRms = computeRms(data);
               if (currentRecording?.autoGainEnabled) {
-                const rms = computeRms(data);
                 const targetRms = 0.12;
-                const desiredGain = rms > 0 ? targetRms / rms : 1;
+                const desiredGain = rawRms > 0 ? targetRms / rawRms : 1;
                 const clampedGain = Math.min(6, Math.max(0.35, desiredGain));
                 const smoothed =
                   currentRecording.gain + (clampedGain - currentRecording.gain) * 0.12;
@@ -656,7 +744,7 @@ export const macosAdapter: PlatformAdapter = {
               }
               const wave = computeWaveform(data);
               void updateOverlayWave(wave);
-              return { data, timestamp: Date.now(), durationMs };
+              return { data, timestamp: Date.now(), durationMs, rms: rawRms };
             };
 
             for await (const chunk of stream as AsyncIterable<Buffer>) {
