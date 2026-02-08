@@ -148,4 +148,235 @@ describe('pipeline', () => {
     );
     expect(output).toBe('Kind regards, Alex');
   });
+
+  it('supports delete and style commands in full formatting mode', () => {
+    const output = runPipeline(
+      'alpha beta comma delete last word make last word italic period',
+      {
+        ...context,
+        mode: {
+          id: 'mode-full-format',
+          name: 'FullFormat',
+          model: { selection: 'fast' },
+          streamingEnabled: true,
+          punctuationNormalization: true,
+          punctuationCommandsEnabled: false,
+          shortcutsEnabled: false,
+          formattingEnabled: true,
+          formattingStyle: 'slack',
+          insertionBehavior: 'insert',
+          vocabularySetIds: ['global'],
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      },
+      DEFAULT_PIPELINE
+    );
+
+    expect(output).toBe('_alpha_.');
+  });
+
+  it('deletes last sentence after newline boundaries', () => {
+    const output = runPipeline(
+      'one new line two delete last sentence',
+      {
+        ...context,
+        mode: {
+          id: 'mode-delete-sentence',
+          name: 'DeleteSentence',
+          model: { selection: 'fast' },
+          streamingEnabled: true,
+          punctuationNormalization: true,
+          punctuationCommandsEnabled: false,
+          shortcutsEnabled: false,
+          formattingEnabled: true,
+          formattingStyle: 'plain',
+          insertionBehavior: 'insert',
+          vocabularySetIds: ['global'],
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      },
+      DEFAULT_PIPELINE
+    );
+
+    expect(output).toBe('one');
+  });
+
+  it('deletes last sentence using alternate phrase and punctuation boundary', () => {
+    const output = runPipeline(
+      'one full stop two delete that last sentence',
+      {
+        ...context,
+        mode: {
+          id: 'mode-delete-alt',
+          name: 'DeleteAlt',
+          model: { selection: 'fast' },
+          streamingEnabled: true,
+          punctuationNormalization: true,
+          punctuationCommandsEnabled: false,
+          shortcutsEnabled: false,
+          formattingEnabled: true,
+          formattingStyle: 'plain',
+          insertionBehavior: 'insert',
+          vocabularySetIds: ['global'],
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      },
+      DEFAULT_PIPELINE
+    );
+
+    expect(output).toBe('one');
+  });
+
+  it('applies and clears sentence formatting on punctuation commands', () => {
+    const output = runPipeline(
+      'next sentence bold hello question mark bye',
+      {
+        ...context,
+        mode: {
+          id: 'mode-sentence-bold',
+          name: 'SentenceBold',
+          model: { selection: 'fast' },
+          streamingEnabled: true,
+          punctuationNormalization: true,
+          punctuationCommandsEnabled: false,
+          shortcutsEnabled: false,
+          formattingEnabled: true,
+          formattingStyle: 'markdown',
+          insertionBehavior: 'insert',
+          vocabularySetIds: ['global'],
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      },
+      DEFAULT_PIPELINE
+    );
+
+    expect(output).toBe('**hello**? bye');
+  });
+
+  it('supports alternate next-word formatting command phrases', () => {
+    const output = runPipeline(
+      'make the next word bold bravo italic next word charlie',
+      {
+        ...context,
+        mode: {
+          id: 'mode-next-word-phrases',
+          name: 'NextWordPhrases',
+          model: { selection: 'fast' },
+          streamingEnabled: true,
+          punctuationNormalization: true,
+          punctuationCommandsEnabled: false,
+          shortcutsEnabled: false,
+          formattingEnabled: true,
+          formattingStyle: 'markdown',
+          insertionBehavior: 'insert',
+          vocabularySetIds: ['global'],
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      },
+      DEFAULT_PIPELINE
+    );
+
+    expect(output).toBe('**bravo** *charlie*');
+  });
+
+  it('ignores formatting/delete effects in punctuation-only mode while still consuming command phrases', () => {
+    const output = runPipeline(
+      'hello bold last word delete last word comma world',
+      {
+        ...context,
+        mode: {
+          id: 'mode-punct-only',
+          name: 'PunctOnly',
+          model: { selection: 'fast' },
+          streamingEnabled: true,
+          punctuationNormalization: true,
+          punctuationCommandsEnabled: true,
+          shortcutsEnabled: false,
+          formattingEnabled: false,
+          formattingStyle: 'plain',
+          insertionBehavior: 'insert',
+          vocabularySetIds: ['global'],
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      },
+      DEFAULT_PIPELINE
+    );
+
+    expect(output).toBe('hello, world');
+  });
+
+  it('normalizes shortcuts with surrounding punctuation and quotes', () => {
+    const output = runPipeline(
+      '  "Signature!" ',
+      {
+        ...context,
+        shortcuts: [
+          {
+            id: 'shortcut-quoted',
+            keyword: 'signature',
+            snippet: 'Kind regards, Team',
+            createdAt: 0,
+            updatedAt: 0,
+          },
+        ],
+        mode: {
+          id: 'mode-shortcut-normalized',
+          name: 'ShortcutNormalized',
+          model: { selection: 'fast' },
+          streamingEnabled: true,
+          punctuationNormalization: true,
+          punctuationCommandsEnabled: false,
+          shortcutsEnabled: true,
+          formattingEnabled: false,
+          formattingStyle: 'plain',
+          insertionBehavior: 'insert',
+          vocabularySetIds: ['global'],
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      },
+      DEFAULT_PIPELINE
+    );
+
+    expect(output).toBe('Kind regards, Team');
+  });
+
+  it('normalizes multiline punctuation', () => {
+    const output = runPipeline('hello  ,   world...\nnext   line  !', context, DEFAULT_PIPELINE);
+    expect(output).toBe('hello, world...\nnext line!');
+  });
+
+  it('skips vocabulary replacements with empty source entries', () => {
+    const output = runPipeline(
+      'OpenAI keeps OpenAI',
+      {
+        ...context,
+        vocabulary: [
+          VocabularyEntrySchema.parse({
+            id: 'v1',
+            source: 'OpenAI',
+            replacement: 'OpenAI Inc.',
+            createdAt: 0,
+            updatedAt: 0,
+          }),
+          VocabularyEntrySchema.parse({
+            id: 'v2',
+            source: '',
+            replacement: 'ignored',
+            createdAt: 0,
+            updatedAt: 0,
+          }),
+        ],
+      },
+      DEFAULT_PIPELINE
+    );
+
+    expect(output).toBe('OpenAI Inc. keeps OpenAI Inc.');
+  });
 });

@@ -72,4 +72,38 @@ describe('recording state machine', () => {
     expect(machine.getState()).toBe('idle');
     expect(deps.audio.cancel).toHaveBeenCalled();
   });
+
+  it('skips streaming call when streaming is disabled', async () => {
+    const { deps } = makeDeps();
+    const machine = createRecordingStateMachine(
+      {
+        ...deps,
+        streamingEnabled: () => false,
+      },
+      {}
+    );
+    await machine.start({ selection: 'fast' });
+    await machine.stop();
+    expect(deps.transcription.stream).not.toHaveBeenCalled();
+    expect(deps.transcription.transcribe).toHaveBeenCalled();
+  });
+
+  it('falls back to clipboard when insert throws', async () => {
+    const { deps } = makeDeps();
+    deps.insertText = (vi.fn(async () => {
+      throw new Error('insert failed');
+    }) as unknown) as typeof deps.insertText;
+    let insertResultMethod: string | null = null;
+    const machine = createRecordingStateMachine(deps, {
+      onInsertResult: (result) => {
+        insertResultMethod = result.method;
+      },
+    });
+
+    await machine.start({ selection: 'fast' });
+    await machine.stop();
+
+    expect(deps.fallbackClipboard).toHaveBeenCalledTimes(1);
+    expect(insertResultMethod).toBe('clipboard');
+  });
 });
