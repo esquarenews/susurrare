@@ -351,7 +351,8 @@ export const createTranscriptionClient = (
       ws.onclose = (event) => {
         const code = (event as { code?: number })?.code;
         const reason = (event as { reason?: string })?.reason;
-        if (!closed && !sawTranscript) {
+        const normalClose = code === undefined || code === 0 || code === 1000 || code === 1001 || code === 1005;
+        if (!closed && !sawTranscript && !normalClose) {
           finalizeReject?.(
             new Error(`Realtime closed${code ? ` (${code})` : ''}${reason ? `: ${reason}` : ''}`)
           );
