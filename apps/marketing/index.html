@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Susurrare — Push-to-talk dictation for real work</title>
+    <meta
+      name="description"
+      content="Susurrare is a cross-platform push-to-talk dictation layer built for macOS today with Windows-ready adapters. Speak once, paste anywhere, and keep your voice consistent with modes, vocabulary, and shortcuts."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" href="assets/logo-light.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <div class="grain" aria-hidden="true"></div>
+      <header class="site-header" id="top">
+        <nav class="nav">
+          <a class="brand" href="#top">
+            <img src="assets/logo-light.png" alt="Susurrare logo" />
+            <span>Susurrare</span>
+          </a>
+          <button
+            class="nav-toggle"
+            type="button"
+            aria-label="Toggle navigation"
+            aria-expanded="false"
+          >
+            <span></span>
+            <span></span>
+          </button>
+          <div class="nav-links" data-nav>
+            <a href="#features">Features</a>
+            <a href="#flow">How it works</a>
+            <a href="#modes">Modes</a>
+            <a href="help.html">Help</a>
+            <a href="#faq">FAQ</a>
+            <a class="btn ghost" href="#download">Get the beta</a>
+          </div>
+        </nav>
+      </header>
+
+      <main>
+        <section class="hero">
+          <div class="hero-content" data-reveal>
+            <div class="eyebrow">Cross-platform push-to-talk dictation</div>
+            <h1>Don’t type. Speak in full clarity.</h1>
+            <p>
+              Susurrare is the dictation layer for modern work. Hold a key, speak naturally, release to
+              paste. Build modes for meetings, writing, or support and keep your voice consistent everywhere.
+            </p>
+            <div class="cta-row">
+              <a class="btn primary" href="#download">Get the macOS beta</a>
+              <a class="btn ghost" href="#features">Explore features</a>
+            </div>
+            <div class="hero-metrics">
+              <div class="metric">
+                <span class="metric-value">Hold</span>
+                <span class="metric-label">Push-to-talk</span>
+              </div>
+              <div class="metric">
+                <span class="metric-value">Stream</span>
+                <span class="metric-label">Live transcription</span>
+              </div>
+              <div class="metric">
+                <span class="metric-value">Release</span>
+                <span class="metric-label">Instant paste</span>
+              </div>
+            </div>
+          </div>
+          <div class="hero-visual" aria-hidden="true">
+            <div class="hero-glow"></div>
+            <div class="hero-stack" data-reveal>
+              <div class="hero-card hero-card-primary">
+                <div class="hero-card-head">
+                  <span class="pill">Recording</span>
+                  <span class="pill ghost">Streaming on</span>
+                </div>
+                <div class="hero-card-body">
+                  <div class="signal">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                  <div class="hero-card-row">
+                    <div>
+                      <div class="label">Mode</div>
+                      <div class="value">Meetings</div>
+                    </div>
+                    <div>
+                      <div class="label">Insert</div>
+                      <div class="value">At cursor</div>
+                    </div>
+                  </div>
+                  <div class="hero-card-note">
+                    Prompt: Summarize with action items, owners, and timeline.
+                  </div>
+                </div>
+              </div>
+              <div class="hero-card hero-card-secondary">
+                <div class="hero-card-row compact">
+                  <div>
+                    <div class="label">Shortcut</div>
+                    <div class="value"><kbd>F15</kbd> Hold to talk</div>
+                  </div>
+                  <div>
+                    <div class="label">Vocabulary</div>
+                    <div class="value">"NDA" → "non-disclosure agreement"</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="hero-badge" data-reveal>
+              <span>Local history</span>
+              <span>Custom modes</span>
+              <span>Sound cues</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="trusted" data-reveal>
+          <div class="trusted-inner">
+            <div class="trusted-label">Works in the apps you already live in</div>
+            <div class="marquee" aria-hidden="true">
+              <div class="marquee-track">
+                <span>Cursor</span>
+                <span>Slack</span>
+                <span>Notion</span>
+                <span>Gmail</span>
+                <span>Linear</span>
+                <span>Zoom</span>
+                <span>Cursor</span>
+                <span>Slack</span>
+                <span>Notion</span>
+                <span>Gmail</span>
+                <span>Linear</span>
+                <span>Zoom</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="features" id="features">
+          <div class="feature-split">
+            <div class="feature-copy" data-reveal>
+              <div class="eyebrow">Control layer</div>
+              <h2>Dictation that feels like a system, not a toy.</h2>
+              <p>
+                Configure shortcuts, modes, prompts, and output style once. Susurrare remembers the context so
+                every dictation sounds exactly how you want.
+              </p>
+              <ul class="feature-list">
+                <li>Push-to-talk, toggle recording, cancel, and mode switching hotkeys.</li>
+                <li>Streaming transcription or full accuracy, per mode.</li>
+                <li>Vocabulary + shortcuts that speak your team’s language.</li>
+              </ul>
+              <div class="feature-cta">
+                <a class="btn primary" href="#download">Request beta access</a>
+                <span class="muted">Mac beta available now · Windows-ready adapters in progress</span>
+              </div>
+            </div>
+            <div class="feature-grid">
+              <article class="feature-card" data-reveal style="--delay: 0.05s">
+                <div class="icon-badge">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3a3 3 0 0 1 3 3v4a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z" />
+                    <path d="M7 11a5 5 0 0 0 10 0" />
+                    <path d="M12 16v4" />
+                  </svg>
+                </div>
+                <h3>Push-to-talk + toggle</h3>
+                <p>Hold to speak, tap to latch, cancel instantly. Remap every shortcut.</p>
+              </article>
+              <article class="feature-card" data-reveal style="--delay: 0.1s">
+                <div class="icon-badge">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 12h3" />
+                    <path d="M10 7v10" />
+                    <path d="M14 4v16" />
+                    <path d="M18 9v6" />
+                  </svg>
+                </div>
+                <h3>Realtime streaming</h3>
+                <p>See words appear as you speak so you stay in flow.</p>
+              </article>
+              <article class="feature-card" data-reveal style="--delay: 0.15s">
+                <div class="icon-badge">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 6h16" />
+                    <path d="M4 12h10" />
+                    <path d="M4 18h14" />
+                    <circle cx="18" cy="12" r="2" />
+                  </svg>
+                </div>
+                <h3>Mode prompts</h3>
+                <p>Attach custom instructions for writing, meetings, or coding.</p>
+              </article>
+              <article class="feature-card" data-reveal style="--delay: 0.2s">
+                <div class="icon-badge">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 7h8" />
+                    <path d="M4 12h14" />
+                    <path d="M4 17h10" />
+                    <path d="M16 6l4 4-4 4" />
+                  </svg>
+                </div>
+                <h3>Vocabulary + shortcuts</h3>
+                <p>Teach Susurrare names, acronyms, and voice snippets.</p>
+              </article>
+              <article class="feature-card" data-reveal style="--delay: 0.25s">
+                <div class="icon-badge">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="8" />
+                    <path d="M12 7v6l4 2" />
+                  </svg>
+                </div>
+                <h3>Local history</h3>
+                <p>Keep recent dictations on-device and export what you need.</p>
+              </article>
+              <article class="feature-card" data-reveal style="--delay: 0.3s">
+                <div class="icon-badge">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 10h4l5-4v12l-5-4H5z" />
+                    <path d="M18 9a4 4 0 0 1 0 6" />
+                  </svg>
+                </div>
+                <h3>Sound + mic control</h3>
+                <p>Automatic gain, silence removal, and sound cues.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="flow" id="flow">
+          <div class="section-heading" data-reveal>
+            <h2>Three beats from thought to text.</h2>
+            <p>No app switching. No menus. Just a simple, repeatable rhythm.</p>
+          </div>
+          <div class="flow-grid">
+            <div class="flow-step" data-reveal style="--delay: 0.05s">
+              <div class="step-number">01</div>
+              <h3>Hold to speak</h3>
+              <p>Press your hotkey to start recording. Sound cues confirm you’re live.</p>
+            </div>
+            <div class="flow-step" data-reveal style="--delay: 0.1s">
+              <div class="step-number">02</div>
+              <h3>Stream as you talk</h3>
+              <p>Streaming dictation keeps you in flow while Susurrare cleans up the text.</p>
+            </div>
+            <div class="flow-step" data-reveal style="--delay: 0.15s">
+              <div class="step-number">03</div>
+              <h3>Release to paste</h3>
+              <p>Insert at cursor or copy to clipboard, with formatting and punctuation rules.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="modes" id="modes">
+          <div class="section-heading" data-reveal>
+            <h2>Modes tuned for speed, accuracy, and meetings.</h2>
+            <p>Switch context instantly. Every mode controls model, streaming, formatting, and vocabulary.</p>
+          </div>
+          <div class="mode-grid">
+            <article class="mode-card" data-reveal style="--delay: 0.05s">
+              <h3>Fast</h3>
+              <p>Low-latency dictation for quick replies, chat, and rapid brainstorming.</p>
+              <div class="mode-meta">Streaming on · Plain text</div>
+            </article>
+            <article class="mode-card" data-reveal style="--delay: 0.1s">
+              <h3>Accurate</h3>
+              <p>High-accuracy transcription for longer-form writing or critical notes.</p>
+              <div class="mode-meta">Formatting on · Markdown</div>
+            </article>
+            <article class="mode-card" data-reveal style="--delay: 0.15s">
+              <h3>Meetings</h3>
+              <p>Multi-speaker diarization and structured output for clean meeting notes.</p>
+              <div class="mode-meta">Vocabulary set · Notes style</div>
+            </article>
+          </div>
+          <div class="mode-callout" data-reveal>
+            <div>
+              <h3>Design your own mode</h3>
+              <p>Choose insertion behavior, output style, prompts, shortcuts, and vocabulary scope per mode.</p>
+            </div>
+            <a class="btn ghost" href="#download">Build your workflow</a>
+          </div>
+        </section>
+
+        <section class="details">
+          <div class="detail-panel" data-reveal>
+            <div class="detail-header">
+              <div>
+                <div class="eyebrow">Fine-grained control</div>
+                <h2>Everything you need, nothing in your way.</h2>
+              </div>
+              <div class="detail-chips">
+                <span>Local-first</span>
+                <span>Configurable</span>
+                <span>Mac today</span>
+              </div>
+            </div>
+            <div class="detail-grid">
+              <div>
+                <h4>Configurable hotkeys</h4>
+                <p>Push-to-talk, toggle, cancel, and mode-switch shortcuts are fully customizable.</p>
+              </div>
+              <div>
+                <h4>Output styles</h4>
+                <p>Plain text, Markdown, or Slack markup with optional formatting commands.</p>
+              </div>
+              <div>
+                <h4>Language controls</h4>
+                <p>English or auto-detect transcription, plus restore-clipboard support.</p>
+              </div>
+              <div>
+                <h4>Local setup</h4>
+                <p>Your OpenAI API key is stored locally, and history stays on your machine.</p>
+              </div>
+              <div>
+                <h4>Sound feedback</h4>
+                <p>Enable sound effects, tune volume, and keep your flow with subtle cues.</p>
+              </div>
+              <div>
+                <h4>Windows-ready</h4>
+                <p>Built for macOS now with Windows-ready adapters waiting in the wings.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="faq" id="faq">
+          <div class="section-heading" data-reveal>
+            <h2>Questions, answered.</h2>
+            <p>Everything you need to know before you start talking.</p>
+          </div>
+          <div class="faq-list">
+            <details class="faq-item" open data-reveal>
+              <summary>Do I need my own OpenAI API key?</summary>
+              <div class="faq-answer">
+                <p>Yes. Susurrare uses your OpenAI API key for transcription and stores it locally on your machine.</p>
+              </div>
+            </details>
+            <details class="faq-item" data-reveal>
+              <summary>Can I switch hotkeys?</summary>
+              <div class="faq-answer">
+                <p>Yes. Push-to-talk, toggle recording, cancel, and mode switching are all configurable.</p>
+              </div>
+            </details>
+            <details class="faq-item" data-reveal>
+              <summary>Where does the text go?</summary>
+              <div class="faq-answer">
+                <p>Susurrare inserts at your cursor or copies to your clipboard, depending on your mode settings.</p>
+              </div>
+            </details>
+            <details class="faq-item" data-reveal>
+              <summary>Is Windows support available?</summary>
+              <div class="faq-answer">
+                <p>Windows support is in progress. The core is built with Windows-ready adapters.</p>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <section class="download" id="download">
+          <div class="download-card" data-reveal>
+            <div>
+              <div class="eyebrow">Get early access</div>
+              <h2>Ready to speak your next draft?</h2>
+              <p>
+                Join the macOS beta and get the fastest way to turn voice into polished text, anywhere you
+                can type.
+              </p>
+            </div>
+            <form class="beta-form" id="beta-form">
+              <input type="text" name="name" placeholder="Name" autocomplete="name" />
+              <input type="email" name="email" placeholder="Work email" autocomplete="email" required />
+              <button class="btn primary" type="submit">Request access</button>
+              <span class="form-note">No spam. We will only email you about the beta.</span>
+              <span class="form-success" role="status" aria-live="polite"></span>
+            </form>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <div class="footer-inner">
+          <div class="brand footer-brand">
+            <img src="assets/logo-light.png" alt="Susurrare logo" />
+            <div>
+              <strong>Susurrare</strong>
+              <span>Push-to-talk dictation for real work.</span>
+            </div>
+          </div>
+          <div class="footer-links">
+            <a href="#features">Features</a>
+            <a href="#flow">Flow</a>
+            <a href="#modes">Modes</a>
+            <a href="help.html">Help</a>
+            <a href="#download">Beta</a>
+          </div>
+          <div class="footer-meta">© <span id="year"></span> Susurrare</div>
+        </div>
+      </footer>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

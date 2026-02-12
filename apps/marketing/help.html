@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Susurrare Help — Wiki Guide</title>
+    <meta
+      name="description"
+      content="Susurrare help wiki: short tutorials for each menu category in the desktop app, with screenshots and direct app links."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" href="assets/logo-light.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page">
+      <div class="grain" aria-hidden="true"></div>
+      <header class="site-header" id="top">
+        <nav class="nav">
+          <a class="brand" href="index.html#top">
+            <img src="assets/logo-light.png" alt="Susurrare logo" />
+            <span>Susurrare</span>
+          </a>
+          <button
+            class="nav-toggle"
+            type="button"
+            aria-label="Toggle navigation"
+            aria-expanded="false"
+          >
+            <span></span>
+            <span></span>
+          </button>
+          <div class="nav-links" data-nav>
+            <a href="index.html#features">Features</a>
+            <a href="index.html#flow">How it works</a>
+            <a href="index.html#modes">Modes</a>
+            <a href="#help-home">Help wiki</a>
+            <a class="btn ghost" href="index.html#download">Get the beta</a>
+          </div>
+        </nav>
+      </header>
+
+      <main class="help-page" id="help-home">
+        <section class="wiki-hero" data-reveal>
+          <div class="eyebrow">Susurrare desktop help</div>
+          <h1>Help wiki by app menu category</h1>
+          <p>
+            These short tutorials mirror the desktop sidebar. In the desktop app, click the subtle
+            <span class="inline-help-icon" aria-hidden="true">?</span>
+            icon beside each page title to jump directly to the matching article here.
+          </p>
+          <div class="wiki-hero-actions">
+            <a class="btn primary" href="susurrare://open?view=home">Open app now</a>
+            <a class="btn ghost" href="index.html">Back to intro site</a>
+          </div>
+        </section>
+
+        <section class="wiki-layout">
+          <aside class="wiki-toc" data-reveal>
+            <h2>Contents</h2>
+            <a href="#help-home-section">Home</a>
+            <a href="#help-modes">Modes</a>
+            <a href="#help-vocabulary">Vocabulary</a>
+            <a href="#help-shortcuts">Shortcuts</a>
+            <a href="#help-configuration">Configuration</a>
+            <a href="#help-sound">Sound</a>
+            <a href="#help-models">Models Library</a>
+            <a href="#help-history">History</a>
+            <a href="#help-diagnostics">Diagnostics</a>
+          </aside>
+
+          <div class="wiki-grid">
+            <article class="wiki-section" id="help-home-section" data-reveal>
+              <h2>Home</h2>
+              <p>Use Home to check weekly performance, trends, and quick next actions.</p>
+              <ol>
+                <li>Open <strong>Home</strong> from the sidebar.</li>
+                <li>Review key stats: speed, words, apps used, and minutes saved.</li>
+                <li>Select <strong>View my stats</strong> for a weekly trend breakdown.</li>
+              </ol>
+              <img src="assets/help/home.png" alt="Susurrare Home view" loading="lazy" />
+            </article>
+
+            <article class="wiki-section" id="help-modes" data-reveal>
+              <h2>Modes</h2>
+              <p>Modes let you tune model, insertion style, and formatting for each workflow.</p>
+              <ol>
+                <li>Select <strong>Modes</strong> and create a new mode or edit an existing one.</li>
+                <li>Set model type and streaming on/off based on latency vs. accuracy needs.</li>
+                <li>Choose insertion behavior and optional rewrite prompt.</li>
+                <li>Enable shortcuts/punctuation/formatting toggles as needed.</li>
+              </ol>
+              <img src="assets/help/modes.png" alt="Susurrare Modes view" loading="lazy" />
+            </article>
+
+            <article class="wiki-section" id="help-vocabulary" data-reveal>
+              <h2>Vocabulary</h2>
+              <p>Vocabulary replacements correct names, acronyms, and recurring terms.</p>
+              <ol>
+                <li>Add a source phrase and replacement.</li>
+                <li>Set scope to <strong>Global</strong> or <strong>Per mode</strong>.</li>
+                <li>Save and test by dictating the source phrase again.</li>
+              </ol>
+              <img src="assets/help/vocabulary.png" alt="Susurrare Vocabulary view" loading="lazy" />
+            </article>
+
+            <article class="wiki-section" id="help-shortcuts" data-reveal>
+              <h2>Shortcuts</h2>
+              <p>Shortcuts map spoken keywords to reusable snippets.</p>
+              <ol>
+                <li>Add a spoken keyword and the snippet text to insert.</li>
+                <li>Choose global or mode-specific scope.</li>
+                <li>Use <strong>Edit</strong> to maintain snippets over time.</li>
+              </ol>
+              <img src="assets/help/shortcuts.png" alt="Susurrare Shortcuts view" loading="lazy" />
+            </article>
+
+            <article class="wiki-section" id="help-configuration" data-reveal>
+              <h2>Configuration</h2>
+              <p>Configuration controls app behavior, language, hotkeys, updates, and API key.</p>
+              <ol>
+                <li>Set your theme and recording window preferences.</li>
+                <li>Configure timeout, language, and clipboard restore behavior.</li>
+                <li>Set push-to-talk/toggle/cancel/change-mode hotkeys.</li>
+                <li>Save and verify your OpenAI API key status.</li>
+              </ol>
+              <img src="assets/help/configuration.png" alt="Susurrare Configuration view" loading="lazy" />
+            </article>
+
+            <article class="wiki-section" id="help-sound" data-reveal>
+              <h2>Sound</h2>
+              <p>Sound settings manage microphone behavior and audible recording cues.</p>
+              <ol>
+                <li>Toggle automatic gain and silence removal.</li>
+                <li>Enable sound effects for start/stop confirmation.</li>
+                <li>Adjust cue volume to match your environment.</li>
+              </ol>
+              <img src="assets/help/sound.png" alt="Susurrare Sound view" loading="lazy" />
+            </article>
+
+            <article class="wiki-section" id="help-models" data-reveal>
+              <h2>Models Library</h2>
+              <p>Review available transcription models and test pinned model IDs.</p>
+              <ol>
+                <li>Open <strong>Models Library</strong> to review speed/accuracy options.</li>
+                <li>Use pinned model ID for advanced/custom setups.</li>
+                <li>Validate model ID format before using in a mode.</li>
+              </ol>
+              <img src="assets/help/models.png" alt="Susurrare Models Library view" loading="lazy" />
+            </article>
+
+            <article class="wiki-section" id="help-history" data-reveal>
+              <h2>History</h2>
+              <p>History keeps local dictations available for reuse, pinning, and export.</p>
+              <ol>
+                <li>Search dictations and select multiple entries.</li>
+                <li>Copy, re-insert, pin, or delete entries as needed.</li>
+                <li>Export selected items to a local text file.</li>
+              </ol>
+              <img src="assets/help/history.png" alt="Susurrare History view" loading="lazy" />
+            </article>
+
+            <article class="wiki-section" id="help-diagnostics" data-reveal>
+              <h2>Diagnostics</h2>
+              <p>Diagnostics exports troubleshooting data for support investigation.</p>
+              <ol>
+                <li>Open <strong>Diagnostics</strong>.</li>
+                <li>Select <strong>Export diagnostics</strong>.</li>
+                <li>Share the generated archive with support when requested.</li>
+              </ol>
+              <img src="assets/help/diagnostics.png" alt="Susurrare Diagnostics view" loading="lazy" />
+            </article>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <div class="footer-inner">
+          <div class="brand footer-brand">
+            <img src="assets/logo-light.png" alt="Susurrare logo" />
+            <div>
+              <strong>Susurrare</strong>
+              <span>Push-to-talk dictation for real work.</span>
+            </div>
+          </div>
+          <div class="footer-links">
+            <a href="index.html#features">Features</a>
+            <a href="#help-home">Help wiki</a>
+            <a href="index.html#download">Beta</a>
+          </div>
+          <div class="footer-meta">© <span id="year"></span> Susurrare</div>
+        </div>
+      </footer>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

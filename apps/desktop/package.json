@@ -1,0 +1,77 @@
+{
+  "name": "@susurrare/desktop",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "main": "out/main/index.js",
+  "build": {
+    "appId": "com.susurrare.desktop",
+    "productName": "Susurrare",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "resources/**/*"
+    ],
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "gatekeeperAssess": false
+    },
+    "extraInfoPlist": {
+      "NSMicrophoneUsageDescription": "Susurrare needs access to the microphone for speech-to-text dictation.",
+      "NSAppleEventsUsageDescription": "Susurrare needs permission to control System Events for paste insertion.",
+      "NSInputMonitoringUsageDescription": "Susurrare needs permission to listen for global hotkeys."
+    },
+    "afterSign": "build/notarize.js",
+    "publish": {
+      "provider": "generic",
+      "url": "https://example.com/updates"
+    }
+  },
+  "scripts": {
+    "predev": "electron-vite build --mode development",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "test:e2e": "pnpm build && playwright test",
+    "dist": "pnpm build && electron-builder --mac"
+  },
+  "dependencies": {
+    "@susurrare/core": "workspace:*",
+    "@susurrare/platform": "workspace:*",
+    "@susurrare/platform-macos": "workspace:*",
+    "@susurrare/platform-windows": "workspace:*",
+    "node-record-lpcm16": "^1.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "uiohook-napi": "^1.5.4",
+    "ws": "^8.18.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@electron/notarize": "^2.2.0",
+    "@playwright/test": "^1.47.2",
+    "@types/archiver": "^5.3.4",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.5.12",
+    "@vitejs/plugin-react": "^4.3.4",
+    "archiver": "^6.0.2",
+    "electron": "^37.10.3",
+    "electron-builder": "^26.7.0",
+    "electron-builder-squirrel-windows": "26.7.0",
+    "electron-log": "^5.2.0",
+    "electron-updater": "^6.7.3",
+    "electron-vite": "^2.3.0",
+    "playwright": "^1.47.2",
+    "typescript": "5.5.4",
+    "vite": "^5.4.10"
+  }
+}
