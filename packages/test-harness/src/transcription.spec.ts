@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createTranscriptionClient, type WebSocketLike } from '@susurrare/core';
+import {
+  OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES,
+  createTranscriptionClient,
+  type WebSocketLike,
+} from '@susurrare/core';
 
 interface MockSocket extends WebSocketLike {
   sent: Array<Uint8Array | string>;
@@ -129,6 +133,50 @@ describe('transcription client', () => {
         text: 'Hello',
       },
     ]);
+  });
+
+  it('chunks oversized OpenAI transcription requests and merges text/segments', async () => {
+    const sampleRate = 16000;
+    const maxPcmBytesPerChunk = OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES - 44 - 64 * 1024;
+    const longAudio = new Uint8Array(maxPcmBytesPerChunk + 100_000);
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            text: 'part one',
+            segments: [{ speaker: 'speaker_0', start: 0, end: 1, text: 'hello' }],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            text: 'part two',
+            segments: [{ speaker: 'speaker_1', start: 0, end: 1, text: 'world' }],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      );
+
+    const client = createTranscriptionClient({
+      baseUrl: 'https://api.openai.com/v1/audio',
+      apiKey: 'test-key',
+      fetcher,
+      websocketFactory: () => createMockSocket(),
+    });
+
+    const result = await client.transcribe({
+      audio: longAudio,
+      model: { selection: 'meeting' },
+      sampleRate,
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(result[0].text).toBe('part one part two');
+    expect(result[0].segments?.[0]?.start).toBe(0);
+    expect(result[0].segments?.[1]?.start).toBeCloseTo(maxPcmBytesPerChunk / (sampleRate * 2), 3);
   });
 
   it.each([

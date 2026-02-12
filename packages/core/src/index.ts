@@ -9,5 +9,6 @@ export * from './transcription/types';
 export * from './transcription/client';
 export * from './telemetry/types';
 export * from './recording/stateMachine';
+export * from './recording/limits';
 export * from './speechToText/types';
 export * from './speechToText/session';

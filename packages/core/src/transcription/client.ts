@@ -8,6 +8,7 @@ import {
   type TranscriptionRequest,
 } from './types';
 import type { DiarizedSegment } from '../domain/schemas';
+import { OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES } from '../recording/limits';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -121,18 +122,54 @@ const normalizeSegments = (value: unknown): DiarizedSegment[] | undefined => {
   return segments.length ? segments : undefined;
 };
 
+const extractOpenAiTranscriptionPayload = async (response: Response) => {
+  const contentType = response.headers.get('content-type') ?? '';
+  let text = '';
+  let segments: DiarizedSegment[] | undefined;
+  if (contentType.includes('application/json')) {
+    const data = (await response.json()) as { text?: string; segments?: unknown };
+    text = data.text ?? '';
+    segments = normalizeSegments(data.segments);
+  } else {
+    text = await response.text();
+  }
+  return { text, segments };
+};
+
+const appendChunkedSegments = (
+  all: DiarizedSegment[],
+  segments: DiarizedSegment[] | undefined,
+  timeOffsetSeconds: number
+) => {
+  if (!segments?.length) return;
+  segments.forEach((segment) => {
+    all.push({
+      ...segment,
+      start: segment.start + timeOffsetSeconds,
+      end: segment.end + timeOffsetSeconds,
+    });
+  });
+};
+
 export const createTranscriptionClient = (
   options: TranscriptionClientOptions,
   retryPolicy: RetryPolicy = RetryPolicySchema.parse({})
 ): TranscriptionClient => {
-  const transcribe = async (request: TranscriptionRequest): Promise<TranscriptionEvent[]> => {
-    const modelId = resolveModel(request.model);
-    if (isOpenAIBaseUrl(options.baseUrl)) {
-      if (!options.apiKey) {
-        throw new Error('OpenAI API key is required for transcription.');
-      }
-      const url = resolveOpenAITranscriptionUrl(options.baseUrl);
-      const wav = encodeWav(request.audio, request.sampleRate ?? 16000);
+  const transcribeOpenAi = async (
+    request: TranscriptionRequest,
+    modelId: string
+  ): Promise<TranscriptionEvent[]> => {
+    const url = resolveOpenAITranscriptionUrl(options.baseUrl);
+    const sampleRate = request.sampleRate ?? 16000;
+    const pcm = request.audio;
+    const bytesPerSecond = Math.max(1, sampleRate * 2);
+    const maxPcmBytesPerChunk = Math.max(
+      2,
+      OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES - 44 - 64 * 1024
+    );
+
+    const submitChunk = async (chunkPcm: Uint8Array) => {
+      const wav = encodeWav(chunkPcm, sampleRate);
       const form = new FormData();
       form.append('file', new Blob([wav], { type: 'audio/wav' }), 'audio.wav');
       form.append('model', modelId);
@@ -152,24 +189,53 @@ export const createTranscriptionClient = (
         const details = await response.text();
         throw new Error(`Transcription failed: ${response.status} ${details}`);
       }
-      const contentType = response.headers.get('content-type') ?? '';
-      let text = '';
-      let segments: DiarizedSegment[] | undefined;
-      if (contentType.includes('application/json')) {
-        const data = (await response.json()) as { text?: string; segments?: unknown };
-        text = data.text ?? '';
-        segments = normalizeSegments(data.segments);
-      } else {
-        text = await response.text();
-      }
+      return extractOpenAiTranscriptionPayload(response);
+    };
+
+    if (pcm.length + 44 <= OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES) {
+      const single = await submitChunk(pcm);
       return [
         {
           kind: 'final',
-          text,
+          text: single.text,
           timestamp: Date.now(),
-          ...(segments ? { segments } : {}),
+          ...(single.segments ? { segments: single.segments } : {}),
         },
       ];
+    }
+
+    const chunkTexts: string[] = [];
+    const chunkSegments: DiarizedSegment[] = [];
+    let offsetBytes = 0;
+    while (offsetBytes < pcm.length) {
+      const end = Math.min(pcm.length, offsetBytes + maxPcmBytesPerChunk);
+      const chunk = pcm.subarray(offsetBytes, end);
+      const payload = await submitChunk(chunk);
+      if (payload.text.trim()) {
+        chunkTexts.push(payload.text.trim());
+      }
+      const offsetSeconds = offsetBytes / bytesPerSecond;
+      appendChunkedSegments(chunkSegments, payload.segments, offsetSeconds);
+      offsetBytes = end;
+    }
+
+    return [
+      {
+        kind: 'final',
+        text: chunkTexts.join(' ').trim(),
+        timestamp: Date.now(),
+        ...(chunkSegments.length ? { segments: chunkSegments } : {}),
+      },
+    ];
+  };
+
+  const transcribe = async (request: TranscriptionRequest): Promise<TranscriptionEvent[]> => {
+    const modelId = resolveModel(request.model);
+    if (isOpenAIBaseUrl(options.baseUrl)) {
+      if (!options.apiKey) {
+        throw new Error('OpenAI API key is required for transcription.');
+      }
+      return transcribeOpenAi(request, modelId);
     }
     const headers: Record<string, string> = {
       'Content-Type': 'application/octet-stream',
