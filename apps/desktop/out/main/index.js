@@ -21016,6 +21016,84 @@ const estimateSafeOpenAiTranscriptionDurationMs = (sampleRate, headroomBytes = D
 };
 const delay = (ms2) => new Promise((resolve2) => setTimeout(resolve2, ms2));
 const isOpenAIBaseUrl = (baseUrl) => baseUrl.includes("api.openai.com");
+const MAX_HTTP_ERROR_DETAIL_LENGTH = 240;
+const RETRYABLE_OPENAI_HTTP_STATUS = /* @__PURE__ */ new Set([408, 409, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524]);
+class OpenAiHttpError extends Error {
+  constructor(status, message, retryable2) {
+    super(message);
+    this.status = status;
+    this.retryable = retryable2;
+    this.name = "OpenAiHttpError";
+  }
+}
+const compactWhitespace = (value) => value.replace(/\s+/g, " ").trim();
+const truncateText = (value, maxLength) => {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+};
+const sanitizeHttpErrorDetails = (status, contentType, bodyText) => {
+  if (!bodyText) return "";
+  const lowered = bodyText.toLowerCase();
+  const looksLikeHtml = contentType.includes("text/html") || contentType.includes("application/xhtml+xml") || lowered.includes("<!doctype") || lowered.includes("<html");
+  if (looksLikeHtml) {
+    if (status === 520) {
+      return "OpenAI service temporarily unavailable (upstream HTTP 520). Please retry.";
+    }
+    if (status >= 500) {
+      return "OpenAI service temporarily unavailable. Please retry.";
+    }
+  }
+  const strippedTags = bodyText.replace(/<[^>]*>/g, " ");
+  const compacted = compactWhitespace(strippedTags);
+  return truncateText(compacted, MAX_HTTP_ERROR_DETAIL_LENGTH);
+};
+const parseJsonErrorMessage = (value) => {
+  if (!value || typeof value !== "object") return "";
+  const record2 = value;
+  if (typeof record2.message === "string") return record2.message;
+  const nested = record2.error;
+  if (typeof nested === "string") return nested;
+  if (nested && typeof nested === "object") {
+    const nestedMessage = nested.message;
+    if (typeof nestedMessage === "string") return nestedMessage;
+  }
+  return "";
+};
+const buildOpenAiHttpError = async (response) => {
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  let rawBody = "";
+  try {
+    rawBody = await response.text();
+  } catch {
+    rawBody = "";
+  }
+  let details = "";
+  if (contentType.includes("application/json") && rawBody) {
+    try {
+      const parsed = JSON.parse(rawBody);
+      details = truncateText(compactWhitespace(parseJsonErrorMessage(parsed)), MAX_HTTP_ERROR_DETAIL_LENGTH);
+    } catch {
+      details = "";
+    }
+  }
+  if (!details) {
+    details = sanitizeHttpErrorDetails(response.status, contentType, rawBody);
+  }
+  const baseMessage = `Transcription failed: ${response.status}`;
+  return new OpenAiHttpError(
+    response.status,
+    details ? `${baseMessage} ${details}` : baseMessage,
+    RETRYABLE_OPENAI_HTTP_STATUS.has(response.status)
+  );
+};
+const isRetryableOpenAiError = (error2) => {
+  if (error2 instanceof OpenAiHttpError) return error2.retryable;
+  if (!(error2 instanceof Error)) return false;
+  const name = error2.name.toLowerCase();
+  if (name.includes("abort")) return false;
+  const message = error2.message.toLowerCase();
+  return !message.includes("aborted");
+};
 const joinUrl = (base, path2) => {
   if (!base.endsWith("/") && !path2.startsWith("/")) return `${base}/${path2}`;
   if (base.endsWith("/") && path2.startsWith("/")) return `${base}${path2.slice(1)}`;
@@ -21138,6 +21216,21 @@ const appendChunkedSegments = (all, segments, timeOffsetSeconds) => {
   });
 };
 const createTranscriptionClient = (options, retryPolicy = RetryPolicySchema.parse({})) => {
+  const retryOpenAiRequest = async (task) => {
+    let attempt = 0;
+    let lastError;
+    while (attempt < retryPolicy.maxAttempts) {
+      try {
+        return await task();
+      } catch (error2) {
+        lastError = error2;
+        attempt += 1;
+        if (attempt >= retryPolicy.maxAttempts || !isRetryableOpenAiError(error2)) break;
+        await delay(retryPolicy.baseDelayMs * attempt);
+      }
+    }
+    throw lastError ?? new Error("Transcription failed");
+  };
   const transcribeOpenAi = async (request, modelId) => {
     const url = resolveOpenAITranscriptionUrl(options.baseUrl);
     const sampleRate = request.sampleRate ?? 16e3;
@@ -21157,18 +21250,19 @@ const createTranscriptionClient = (options, retryPolicy = RetryPolicySchema.pars
         form.append("chunking_strategy", "auto");
       }
       if (request.language) form.append("language", request.language);
-      const response = await options.fetcher(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${options.apiKey}`
-        },
-        body: form
+      return retryOpenAiRequest(async () => {
+        const response = await options.fetcher(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${options.apiKey}`
+          },
+          body: form
+        });
+        if (!response.ok) {
+          throw await buildOpenAiHttpError(response);
+        }
+        return extractOpenAiTranscriptionPayload(response);
       });
-      if (!response.ok) {
-        const details = await response.text();
-        throw new Error(`Transcription failed: ${response.status} ${details}`);
-      }
-      return extractOpenAiTranscriptionPayload(response);
     };
     if (pcm.length + 44 <= OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES) {
       const single = await submitChunk(pcm);

@@ -135,6 +135,78 @@ describe('transcription client', () => {
     ]);
   });
 
+  it('retries transient OpenAI 520 failures and succeeds on a later attempt', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('<!DOCTYPE html><html><body>Cloudflare 520</body></html>', {
+          status: 520,
+          headers: { 'content-type': 'text/html' },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ text: 'recovered' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+
+    const client = createTranscriptionClient(
+      {
+        baseUrl: 'https://api.openai.com/v1/audio',
+        apiKey: 'test-key',
+        fetcher,
+        websocketFactory: () => createMockSocket(),
+      },
+      { maxAttempts: 2, baseDelayMs: 1 }
+    );
+
+    const result = await client.transcribe({
+      audio: new Uint8Array([1, 2, 3, 4]),
+      model: { selection: 'fast' },
+      sampleRate: 16000,
+    });
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(result[0].text).toBe('recovered');
+  });
+
+  it('sanitizes HTML OpenAI error payloads when retries are exhausted', async () => {
+    const fetcher = vi.fn(async () =>
+      new Response('<!DOCTYPE html><html><body>Cloudflare Ray ID: 12345</body></html>', {
+        status: 520,
+        headers: { 'content-type': 'text/html' },
+      })
+    );
+
+    const client = createTranscriptionClient(
+      {
+        baseUrl: 'https://api.openai.com/v1/audio',
+        apiKey: 'test-key',
+        fetcher,
+        websocketFactory: () => createMockSocket(),
+      },
+      { maxAttempts: 1, baseDelayMs: 1 }
+    );
+
+    let message = '';
+    try {
+      await client.transcribe({
+        audio: new Uint8Array([1, 2, 3, 4]),
+        model: { selection: 'fast' },
+        sampleRate: 16000,
+      });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(message).toContain('Transcription failed: 520');
+    expect(message.toLowerCase()).not.toContain('<html');
+    expect(message.toLowerCase()).not.toContain('<!doctype');
+    expect(message.length).toBeLessThan(160);
+  });
+
   it('chunks oversized OpenAI transcription requests and merges text/segments', async () => {
     const sampleRate = 16000;
     const maxPcmBytesPerChunk = OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES - 44 - 64 * 1024;
