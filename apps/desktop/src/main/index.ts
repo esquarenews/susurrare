@@ -9,6 +9,7 @@ import {
   shell,
   globalShortcut,
   session,
+  systemPreferences,
 } from 'electron';
 import type { Input } from 'electron';
 import { spawn } from 'child_process';
@@ -75,6 +76,14 @@ const RECORDING_LIMIT_WARNING_WINDOW_MS = 60_000;
 const RECORDING_LIMIT_MIN_WARNING_MS = 5_000;
 
 const shouldShowOverlay = () => settings.overlayStyle !== 'hide';
+
+const ensureMicrophoneAccess = async () => {
+  if (process.platform !== 'darwin') return true;
+  const status = systemPreferences.getMediaAccessStatus('microphone');
+  if (status === 'granted') return true;
+  if (status === 'denied' || status === 'restricted') return false;
+  return systemPreferences.askForMediaAccess('microphone');
+};
 
 type JsonRecord = Record<string, unknown>;
 
@@ -542,6 +551,39 @@ const normalizeShortcut = (shortcut: string) => {
   return { modifiers, mainKey };
 };
 
+const normalizeShortcutMainKey = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const lowered = trimmed.toLowerCase();
+  const aliases: Record<string, string> = {
+    esc: 'escape',
+    return: 'enter',
+    del: 'delete',
+    control: 'ctrl',
+    command: 'cmd',
+    meta: 'cmd',
+    alt: 'option',
+    arrowup: 'up',
+    arrowdown: 'down',
+    arrowleft: 'left',
+    arrowright: 'right',
+  };
+  if (aliases[lowered]) return aliases[lowered];
+  if (/^key[a-z]$/i.test(trimmed)) return trimmed.slice(3).toLowerCase();
+  if (/^digit\d$/i.test(trimmed)) return trimmed.slice(5).toLowerCase();
+  return lowered;
+};
+
+const inputMainKey = (input: Input) => {
+  const candidates = [input.key, 'code' in input ? input.code : undefined];
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue;
+    const normalized = normalizeShortcutMainKey(candidate);
+    if (normalized) return normalized;
+  }
+  return '';
+};
+
 const matchesShortcut = (input: Input, shortcut: string) => {
   if (!shortcut) return false;
   const { modifiers, mainKey } = normalizeShortcut(shortcut);
@@ -551,7 +593,7 @@ const matchesShortcut = (input: Input, shortcut: string) => {
     alt: modifiers.has('alt') || modifiers.has('option'),
     meta: modifiers.has('cmd') || modifiers.has('command') || modifiers.has('meta'),
   };
-  const inputKey = input.key?.toLowerCase?.() ?? '';
+  const inputKey = inputMainKey(input);
   if (mainKey && inputKey !== mainKey) return false;
   if (input.shift !== required.shift) return false;
   if (input.control !== required.control) return false;
@@ -563,6 +605,10 @@ const matchesShortcut = (input: Input, shortcut: string) => {
 const startRecording = async () => {
   if (recordingActive) return;
   try {
+    if (!(await ensureMicrophoneAccess())) {
+      sendRecordingStatus('error', 'Microphone access is required to start recording.');
+      return;
+    }
     playSoundEffect('start');
     if (overlayHideTimer) {
       clearTimeout(overlayHideTimer);
@@ -1231,6 +1277,14 @@ ipcMain.handle(IpcChannels.historyExport, async (_event, envelope) => {
 
 ipcMain.handle(IpcChannels.settingsGet, async () => {
   return wrapEnvelope(settingsForRenderer(settings));
+});
+
+ipcMain.handle(IpcChannels.permissionsGet, async () => {
+  return wrapEnvelope(await platformAdapter.permissions.check());
+});
+
+ipcMain.handle(IpcChannels.permissionsGuidance, async () => {
+  return wrapEnvelope({ message: await platformAdapter.permissions.requestGuidance() });
 });
 
 ipcMain.handle(IpcChannels.settingsSet, async (_event, envelope) => {

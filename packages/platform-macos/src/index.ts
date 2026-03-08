@@ -1,6 +1,6 @@
 import { createRequire } from 'module';
 import { execFile } from 'child_process';
-import { BrowserWindow, clipboard, screen } from 'electron';
+import { BrowserWindow, clipboard, screen, systemPreferences } from 'electron';
 import type { PlatformAdapter } from '@susurrare/platform';
 
 type RecordModule = {
@@ -36,6 +36,34 @@ type UiohookModule = {
 };
 
 let uiohookModule: UiohookModule | null = null;
+let accessibilityPromptAttempted = false;
+
+const hasAccessibilityAccess = () => systemPreferences.isTrustedAccessibilityClient(false);
+
+const requireAccessibilityAccess = (prompt = false) => {
+  if (hasAccessibilityAccess()) return;
+  if (prompt && !accessibilityPromptAttempted) {
+    accessibilityPromptAttempted = true;
+    systemPreferences.isTrustedAccessibilityClient(true);
+    if (hasAccessibilityAccess()) return;
+  }
+  throw new Error(
+    'Accessibility access is required for low-level hotkeys on macOS. Open System Settings > Privacy & Security > Accessibility and Input Monitoring, then grant access to Electron.'
+  );
+};
+
+const mapMicrophoneAccess = () => {
+  const status = systemPreferences.getMediaAccessStatus('microphone');
+  switch (status) {
+    case 'granted':
+      return 'granted' as const;
+    case 'denied':
+    case 'restricted':
+      return 'denied' as const;
+    default:
+      return 'prompt' as const;
+  }
+};
 
 const loadUiohook = (): UiohookModule => {
   if (uiohookModule) return uiohookModule;
@@ -71,6 +99,7 @@ let hookAttached = false;
 
 const startHook = () => {
   if (hookStarted) return;
+  requireAccessibilityAccess(true);
   loadUiohook().uIOhook.start();
   hookStarted = true;
 };
@@ -890,10 +919,13 @@ export const macosAdapter: PlatformAdapter = {
   },
   permissions: {
     async check() {
-      return { microphone: 'prompt', accessibility: 'prompt' };
+      return {
+        microphone: mapMicrophoneAccess(),
+        accessibility: hasAccessibilityAccess() ? 'granted' : 'prompt',
+      };
     },
     async requestGuidance() {
-      return 'Open System Settings > Privacy & Security to grant microphone and accessibility access.';
+      return 'Open System Settings > Privacy & Security to grant microphone and accessibility access. For development builds, grant access to Electron. Microphone permission is requested when you start recording.';
     },
   },
 };

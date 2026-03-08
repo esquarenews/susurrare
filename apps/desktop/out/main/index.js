@@ -1,4 +1,4 @@
-import require$$1$3, { clipboard, BrowserWindow, screen, app, safeStorage, ipcMain, shell, session, nativeTheme, globalShortcut, Tray, Menu, nativeImage } from "electron";
+import require$$1$3, { clipboard, systemPreferences, BrowserWindow, screen, app, safeStorage, ipcMain, shell, session, nativeTheme, globalShortcut, Tray, Menu, nativeImage } from "electron";
 import require$$1$4, { execFile, spawn } from "child_process";
 import require$$1, { join } from "path";
 import require$$0$3, { existsSync, readFileSync as readFileSync$1, writeFileSync as writeFileSync$1, mkdirSync, createWriteStream, unlinkSync } from "fs";
@@ -20456,6 +20456,10 @@ const AppInfoSchema = objectType({
   name: stringType(),
   version: stringType()
 });
+objectType({
+  microphone: enumType(["granted", "denied", "prompt"]),
+  accessibility: enumType(["granted", "denied", "prompt"])
+});
 const HistoryPinSchema = objectType({
   id: stringType(),
   pinned: booleanType()
@@ -20504,6 +20508,8 @@ const IpcChannels = {
   updateCheck: "updates:check",
   settingsGet: "settings:get",
   settingsSet: "settings:set",
+  permissionsGet: "permissions:get",
+  permissionsGuidance: "permissions:guidance",
   helpOpen: "help:open",
   appInfo: "app:info",
   modelsList: "models:list",
@@ -22068,6 +22074,31 @@ const createSpeechToTextSession = (deps) => {
 const require$1 = createRequire(import.meta.url);
 const record = require$1("node-record-lpcm16");
 let uiohookModule = null;
+let accessibilityPromptAttempted = false;
+const hasAccessibilityAccess = () => systemPreferences.isTrustedAccessibilityClient(false);
+const requireAccessibilityAccess = (prompt = false) => {
+  if (hasAccessibilityAccess()) return;
+  if (prompt && !accessibilityPromptAttempted) {
+    accessibilityPromptAttempted = true;
+    systemPreferences.isTrustedAccessibilityClient(true);
+    if (hasAccessibilityAccess()) return;
+  }
+  throw new Error(
+    "Accessibility access is required for low-level hotkeys on macOS. Open System Settings > Privacy & Security > Accessibility and Input Monitoring, then grant access to Electron."
+  );
+};
+const mapMicrophoneAccess = () => {
+  const status = systemPreferences.getMediaAccessStatus("microphone");
+  switch (status) {
+    case "granted":
+      return "granted";
+    case "denied":
+    case "restricted":
+      return "denied";
+    default:
+      return "prompt";
+  }
+};
 const loadUiohook = () => {
   if (uiohookModule) return uiohookModule;
   let loaded;
@@ -22087,6 +22118,7 @@ let hookStarted = false;
 let hookAttached = false;
 const startHook = () => {
   if (hookStarted) return;
+  requireAccessibilityAccess(true);
   loadUiohook().uIOhook.start();
   hookStarted = true;
 };
@@ -22852,10 +22884,13 @@ const macosAdapter = {
   },
   permissions: {
     async check() {
-      return { microphone: "prompt", accessibility: "prompt" };
+      return {
+        microphone: mapMicrophoneAccess(),
+        accessibility: hasAccessibilityAccess() ? "granted" : "prompt"
+      };
     },
     async requestGuidance() {
-      return "Open System Settings > Privacy & Security to grant microphone and accessibility access.";
+      return "Open System Settings > Privacy & Security to grant microphone and accessibility access. For development builds, grant access to Electron. Microphone permission is requested when you start recording.";
     }
   }
 };
@@ -37358,6 +37393,13 @@ const SILENCE_RMS_THRESHOLD = 0.012;
 const RECORDING_LIMIT_WARNING_WINDOW_MS = 6e4;
 const RECORDING_LIMIT_MIN_WARNING_MS = 5e3;
 const shouldShowOverlay = () => settings.overlayStyle !== "hide";
+const ensureMicrophoneAccess = async () => {
+  if (process.platform !== "darwin") return true;
+  const status = systemPreferences.getMediaAccessStatus("microphone");
+  if (status === "granted") return true;
+  if (status === "denied" || status === "restricted") return false;
+  return systemPreferences.askForMediaAccess("microphone");
+};
 const isRecord = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const stripControlCharacters = (value) => {
   let output = "";
@@ -37759,6 +37801,37 @@ const normalizeShortcut = (shortcut) => {
   const mainKey = tokens[tokens.length - 1]?.toLowerCase() ?? "";
   return { modifiers, mainKey };
 };
+const normalizeShortcutMainKey = (value) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const lowered = trimmed.toLowerCase();
+  const aliases = {
+    esc: "escape",
+    return: "enter",
+    del: "delete",
+    control: "ctrl",
+    command: "cmd",
+    meta: "cmd",
+    alt: "option",
+    arrowup: "up",
+    arrowdown: "down",
+    arrowleft: "left",
+    arrowright: "right"
+  };
+  if (aliases[lowered]) return aliases[lowered];
+  if (/^key[a-z]$/i.test(trimmed)) return trimmed.slice(3).toLowerCase();
+  if (/^digit\d$/i.test(trimmed)) return trimmed.slice(5).toLowerCase();
+  return lowered;
+};
+const inputMainKey = (input) => {
+  const candidates = [input.key, "code" in input ? input.code : void 0];
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const normalized = normalizeShortcutMainKey(candidate);
+    if (normalized) return normalized;
+  }
+  return "";
+};
 const matchesShortcut = (input, shortcut) => {
   if (!shortcut) return false;
   const { modifiers, mainKey } = normalizeShortcut(shortcut);
@@ -37768,7 +37841,7 @@ const matchesShortcut = (input, shortcut) => {
     alt: modifiers.has("alt") || modifiers.has("option"),
     meta: modifiers.has("cmd") || modifiers.has("command") || modifiers.has("meta")
   };
-  const inputKey = input.key?.toLowerCase?.() ?? "";
+  const inputKey = inputMainKey(input);
   if (mainKey && inputKey !== mainKey) return false;
   if (input.shift !== required.shift) return false;
   if (input.control !== required.control) return false;
@@ -37779,6 +37852,10 @@ const matchesShortcut = (input, shortcut) => {
 const startRecording = async () => {
   if (recordingActive) return;
   try {
+    if (!await ensureMicrophoneAccess()) {
+      sendRecordingStatus("error", "Microphone access is required to start recording.");
+      return;
+    }
     playSoundEffect("start");
     if (overlayHideTimer) {
       clearTimeout(overlayHideTimer);
@@ -38402,6 +38479,12 @@ ipcMain.handle(IpcChannels.historyExport, async (_event, envelope) => {
 });
 ipcMain.handle(IpcChannels.settingsGet, async () => {
   return wrapEnvelope(settingsForRenderer(settings));
+});
+ipcMain.handle(IpcChannels.permissionsGet, async () => {
+  return wrapEnvelope(await platformAdapter.permissions.check());
+});
+ipcMain.handle(IpcChannels.permissionsGuidance, async () => {
+  return wrapEnvelope({ message: await platformAdapter.permissions.requestGuidance() });
 });
 ipcMain.handle(IpcChannels.settingsSet, async (_event, envelope) => {
   if (!envelope || envelope.version !== IPC_VERSION) return;

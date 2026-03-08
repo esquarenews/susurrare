@@ -2,6 +2,7 @@ import type {
   DiagnosticsExport,
   HistoryItem,
   ModelInfo,
+  PermissionStatus,
   Settings,
   TranscriptionEvent,
   Mode,
@@ -31,6 +32,10 @@ declare global {
       settings: {
         get: () => Promise<Settings>;
         set: (partial: Partial<Settings>) => Promise<Settings>;
+      };
+      permissions: {
+        get: () => Promise<PermissionStatus>;
+        guidance: () => Promise<string>;
       };
       help: {
         open: (sectionId?: string) => Promise<{ ok: boolean }>;

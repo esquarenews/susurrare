@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { HistoryItem } from '@susurrare/core';
+import type { HistoryItem, PermissionStatus } from '@susurrare/core';
 import {
   DiagnosticsView,
   HistoryView,
@@ -76,13 +76,26 @@ const computeHomeStats = (items: HistoryItem[]) => {
   };
 };
 
+const getMissingPermissionCount = (permissions: PermissionStatus | null) => {
+  if (!permissions) return 0;
+  let count = 0;
+  if (permissions.accessibility !== 'granted') count += 1;
+  if (permissions.microphone !== 'granted') count += 1;
+  return count;
+};
+
 export const App: React.FC = () => {
   const [active, setActive] = useState<NavId>('home');
   const [recordingStatus, setRecordingStatus] = useState<
     'idle' | 'recording' | 'processing' | 'error'
   >('idle');
+  const [permissions, setPermissions] = useState<PermissionStatus | null>(null);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const homeStats = useMemo(() => computeHomeStats(historyItems), [historyItems]);
+  const missingPermissionCount = useMemo(
+    () => getMissingPermissionCount(permissions),
+    [permissions]
+  );
   const previousStatusRef = useRef<typeof recordingStatus>('idle');
 
   useEffect(() => {
@@ -110,6 +123,24 @@ export const App: React.FC = () => {
   useEffect(() => {
     previousStatusRef.current = recordingStatus;
   }, [recordingStatus]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPermissions = () => {
+      window.susurrare.permissions
+        .get()
+        .then((next) => {
+          if (!cancelled) setPermissions(next);
+        })
+        .catch(() => undefined);
+    };
+    loadPermissions();
+    window.addEventListener('focus', loadPermissions);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', loadPermissions);
+    };
+  }, []);
 
   useEffect(() => {
     window.susurrare.history
@@ -155,6 +186,11 @@ export const App: React.FC = () => {
             <span>Susurrare</span>
           </div>
           <div className="top-actions">
+            {missingPermissionCount > 0 && (
+              <button className="pill warning-pill" onClick={() => setActive('configuration')}>
+                Permissions needed ({missingPermissionCount})
+              </button>
+            )}
             <div className={`recording-pill ${recordingStatus}`}>
               <span className="recording-dot" />
               {recordingStatus === 'recording'

@@ -3,7 +3,14 @@ import {
   estimateSafeOpenAiTranscriptionDurationMs,
   formatDurationMinutesSeconds,
 } from '@susurrare/core';
-import type { HistoryItem, Mode, VocabularyEntry, Settings, ShortcutEntry } from '@susurrare/core';
+import type {
+  HistoryItem,
+  Mode,
+  PermissionStatus,
+  VocabularyEntry,
+  Settings,
+  ShortcutEntry,
+} from '@susurrare/core';
 
 const StatCard: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="stat-card">
@@ -13,6 +20,198 @@ const StatCard: React.FC<{ label: string; value: string }> = ({ label, value }) 
 );
 
 type StatusState = { text: string | null; nonce: number };
+type PermissionNotice = { id: string; title: string; body: string };
+type ShortcutSettingKey =
+  | 'changeModeShortcut'
+  | 'cancelKey'
+  | 'pushToTalkKey'
+  | 'toggleRecordingKey';
+type ShortcutDrafts = Record<ShortcutSettingKey, string>;
+
+const shortcutModifierOrder = ['Shift', 'Ctrl', 'Option', 'Cmd'] as const;
+const modifierAliases: Record<string, (typeof shortcutModifierOrder)[number]> = {
+  shift: 'Shift',
+  ctrl: 'Ctrl',
+  control: 'Ctrl',
+  alt: 'Option',
+  option: 'Option',
+  cmd: 'Cmd',
+  command: 'Cmd',
+  meta: 'Cmd',
+};
+
+const specialKeyAliases: Record<string, string> = {
+  esc: 'Escape',
+  escape: 'Escape',
+  enter: 'Enter',
+  return: 'Enter',
+  space: 'Space',
+  spacebar: 'Space',
+  tab: 'Tab',
+  backspace: 'Backspace',
+  delete: 'Delete',
+  del: 'Delete',
+  insert: 'Insert',
+  home: 'Home',
+  end: 'End',
+  pageup: 'PageUp',
+  'page up': 'PageUp',
+  pagedown: 'PageDown',
+  'page down': 'PageDown',
+  up: 'ArrowUp',
+  arrowup: 'ArrowUp',
+  down: 'ArrowDown',
+  arrowdown: 'ArrowDown',
+  left: 'ArrowLeft',
+  arrowleft: 'ArrowLeft',
+  right: 'ArrowRight',
+  arrowright: 'ArrowRight',
+  semicolon: 'Semicolon',
+  equal: 'Equal',
+  comma: 'Comma',
+  minus: 'Minus',
+  period: 'Period',
+  slash: 'Slash',
+  backquote: 'Backquote',
+  bracketleft: 'BracketLeft',
+  backslash: 'Backslash',
+  bracketright: 'BracketRight',
+  quote: 'Quote',
+};
+
+const keyboardSymbolMap: Record<string, string> = {
+  ';': 'Semicolon',
+  '=': 'Equal',
+  ',': 'Comma',
+  '-': 'Minus',
+  '.': 'Period',
+  '/': 'Slash',
+  '`': 'Backquote',
+  '[': 'BracketLeft',
+  '\\': 'Backslash',
+  ']': 'BracketRight',
+  "'": 'Quote',
+};
+
+const shortcutFieldMeta: Array<{ key: ShortcutSettingKey; label: string; description: string }> = [
+  {
+    key: 'changeModeShortcut',
+    label: 'Change mode',
+    description: 'Cycle or open the mode switcher.',
+  },
+  {
+    key: 'cancelKey',
+    label: 'Cancel Recording',
+    description: 'Discards the active recording.',
+  },
+  {
+    key: 'pushToTalkKey',
+    label: 'Push to Talk',
+    description: 'Hold to record, release to paste.',
+  },
+  {
+    key: 'toggleRecordingKey',
+    label: 'Toggle Recording',
+    description: 'Press once to start or stop recording.',
+  },
+];
+
+const normalizeShortcutKeyToken = (token: string) => {
+  const trimmed = token.trim();
+  if (!trimmed) return null;
+  const lowered = trimmed.toLowerCase();
+  if (modifierAliases[lowered]) {
+    return { kind: 'modifier' as const, value: modifierAliases[lowered] };
+  }
+  if (specialKeyAliases[lowered]) {
+    return { kind: 'key' as const, value: specialKeyAliases[lowered] };
+  }
+  if (keyboardSymbolMap[trimmed]) {
+    return { kind: 'key' as const, value: keyboardSymbolMap[trimmed] };
+  }
+  if (/^[a-z]$/i.test(trimmed)) {
+    return { kind: 'key' as const, value: trimmed.toUpperCase() };
+  }
+  if (/^\d$/.test(trimmed)) {
+    return { kind: 'key' as const, value: trimmed };
+  }
+  if (/^f([1-9]|1\d|2[0-4])$/i.test(trimmed)) {
+    return { kind: 'key' as const, value: trimmed.toUpperCase() };
+  }
+  return null;
+};
+
+const formatShortcut = (modifiers: Array<(typeof shortcutModifierOrder)[number]>, key: string) => {
+  const ordered = shortcutModifierOrder.filter((modifier) => modifiers.includes(modifier));
+  return [...ordered, key].join('+');
+};
+
+const validateShortcut = (value: string) => {
+  const raw = value.trim();
+  if (!raw) {
+    return {
+      valid: false as const,
+      error: 'Shortcut is required.',
+    };
+  }
+  const rawTokens = raw.split('+');
+  if (rawTokens.some((token) => token.trim().length === 0)) {
+    return {
+      valid: false as const,
+      error: 'Invalid syntax. Use + between keys, for example Shift+Cmd+K.',
+    };
+  }
+  const tokens = rawTokens.map((token) => token.trim());
+  if (tokens.length === 0) {
+    return {
+      valid: false as const,
+      error: 'Shortcut is required.',
+    };
+  }
+  const modifiers: Array<(typeof shortcutModifierOrder)[number]> = [];
+  for (const token of tokens.slice(0, -1)) {
+    const normalized = normalizeShortcutKeyToken(token);
+    if (!normalized || normalized.kind !== 'modifier') {
+      return {
+        valid: false as const,
+        error: 'Invalid syntax. Put modifiers first and finish with a key, for example Ctrl+Option+Space.',
+      };
+    }
+    if (modifiers.includes(normalized.value)) {
+      return {
+        valid: false as const,
+        error: 'Invalid syntax. Remove duplicate modifiers.',
+      };
+    }
+    modifiers.push(normalized.value);
+  }
+  const main = normalizeShortcutKeyToken(tokens[tokens.length - 1]);
+  if (!main || main.kind !== 'key') {
+    return {
+      valid: false as const,
+      error: 'Invalid syntax. The shortcut needs a final non-modifier key, for example Shift+Cmd+K.',
+    };
+  }
+  return {
+    valid: true as const,
+    normalized: formatShortcut(modifiers, main.value),
+  };
+};
+
+const eventToShortcut = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  const lowered = event.key.toLowerCase();
+  if (lowered in modifierAliases) return null;
+  const main =
+    normalizeShortcutKeyToken(event.key) ??
+    normalizeShortcutKeyToken(event.code.replace(/^(Key|Digit)/, ''));
+  if (!main || main.kind !== 'key') return null;
+  const modifiers: Array<(typeof shortcutModifierOrder)[number]> = [];
+  if (event.shiftKey) modifiers.push('Shift');
+  if (event.ctrlKey) modifiers.push('Ctrl');
+  if (event.altKey) modifiers.push('Option');
+  if (event.metaKey) modifiers.push('Cmd');
+  return formatShortcut(modifiers, main.value);
+};
 
 const StatusBanner: React.FC<{ status: StatusState }> = ({ status }) => {
   const message = status.text;
@@ -119,14 +318,95 @@ const ViewTitle: React.FC<{
   </h2>
 );
 
+const buildPermissionNotices = (permissions: PermissionStatus | null): PermissionNotice[] => {
+  if (!permissions) return [];
+  const notices: PermissionNotice[] = [];
+  if (permissions.accessibility !== 'granted') {
+    notices.push({
+      id: 'accessibility',
+      title: 'Global hold-to-talk is unavailable',
+      body:
+        'Grant Accessibility and Input Monitoring access to Electron to enable low-level push-to-talk detection. Toggle, cancel, and mode shortcuts may still work.',
+    });
+  }
+  if (permissions.microphone !== 'granted') {
+    notices.push({
+      id: 'microphone',
+      title: 'Microphone capture is unavailable',
+      body:
+        'Grant microphone access so Susurrare can record audio for transcription.',
+    });
+  }
+  return notices;
+};
+
+const shortcutDraftsFromSettings = (value: Settings): ShortcutDrafts => ({
+  changeModeShortcut: value.changeModeShortcut,
+  cancelKey: value.cancelKey,
+  pushToTalkKey: value.pushToTalkKey,
+  toggleRecordingKey: value.toggleRecordingKey,
+});
+
 const SettingsConfigView: React.FC = () => {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [status, setStatus] = useState<StatusState>({ text: null, nonce: 0 });
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const [permissions, setPermissions] = useState<PermissionStatus | null>(null);
+  const [permissionGuidance, setPermissionGuidance] = useState('');
+  const [shortcutDrafts, setShortcutDrafts] = useState<ShortcutDrafts>({
+    changeModeShortcut: '',
+    cancelKey: '',
+    pushToTalkKey: '',
+    toggleRecordingKey: '',
+  });
+  const [shortcutErrors, setShortcutErrors] = useState<Record<ShortcutSettingKey, string | null>>({
+    changeModeShortcut: null,
+    cancelKey: null,
+    pushToTalkKey: null,
+    toggleRecordingKey: null,
+  });
+  const [capturingShortcut, setCapturingShortcut] = useState<ShortcutSettingKey | null>(null);
+  const settingsUpdateQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const shortcutInputRefs = useRef<Record<ShortcutSettingKey, HTMLInputElement | null>>({
+    changeModeShortcut: null,
+    cancelKey: null,
+    pushToTalkKey: null,
+    toggleRecordingKey: null,
+  });
+
+  const refreshPermissions = async () => {
+    try {
+      const [nextPermissions, guidance] = await Promise.all([
+        window.susurrare.permissions.get(),
+        window.susurrare.permissions.guidance(),
+      ]);
+      setPermissions(nextPermissions);
+      setPermissionGuidance(guidance);
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   useEffect(() => {
-    window.susurrare.settings.get().then(setSettings).catch(console.error);
+    window.susurrare.settings
+      .get()
+      .then((next) => {
+        setSettings(next);
+        setShortcutDrafts(shortcutDraftsFromSettings(next));
+      })
+      .catch(console.error);
+    void refreshPermissions();
+    const handleFocus = () => {
+      void refreshPermissions();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, []);
+
+  const permissionNotices = useMemo(
+    () => buildPermissionNotices(permissions),
+    [permissions]
+  );
 
   if (!settings) {
     return (
@@ -150,22 +430,29 @@ const SettingsConfigView: React.FC = () => {
   }
 
   const update = async (partial: Partial<Settings>) => {
-    try {
-      const next = await window.susurrare.settings.set(partial);
-      setSettings(next);
-      if (partial.theme) {
-        const root = document.documentElement;
-        if (partial.theme === 'system') {
-          root.removeAttribute('data-theme');
-        } else {
-          root.setAttribute('data-theme', partial.theme);
+    const runUpdate = async () => {
+      try {
+        const next = await window.susurrare.settings.set(partial);
+        setSettings(next);
+        if (partial.theme) {
+          const root = document.documentElement;
+          if (partial.theme === 'system') {
+            root.removeAttribute('data-theme');
+          } else {
+            root.setAttribute('data-theme', partial.theme);
+          }
         }
+        setStatus({ text: 'Settings updated.', nonce: Date.now() });
+      } catch (error) {
+        console.error(error);
+        setStatus({ text: 'Unable to save settings.', nonce: Date.now() });
+        throw error;
       }
-      setStatus({ text: 'Settings updated.', nonce: Date.now() });
-    } catch (error) {
-      console.error(error);
-      setStatus({ text: 'Unable to save settings.', nonce: Date.now() });
-    }
+    };
+
+    const queued = settingsUpdateQueueRef.current.then(runUpdate, runUpdate);
+    settingsUpdateQueueRef.current = queued.catch(() => undefined);
+    return queued;
   };
 
   const saveApiKey = async () => {
@@ -177,6 +464,34 @@ const SettingsConfigView: React.FC = () => {
 
   const clearApiKey = async () => {
     await update({ openAiApiKey: undefined });
+  };
+
+  const setShortcutDraft = (field: ShortcutSettingKey, value: string) => {
+    setShortcutDrafts((current) => ({ ...current, [field]: value }));
+    const validation = validateShortcut(value);
+    setShortcutErrors((current) => ({
+      ...current,
+      [field]: validation.valid ? null : validation.error,
+    }));
+  };
+
+  const saveShortcut = async (field: ShortcutSettingKey, nextValue = shortcutDrafts[field]) => {
+    if (!settings) return;
+    const validation = validateShortcut(nextValue);
+    if (!validation.valid) {
+      setShortcutErrors((current) => ({ ...current, [field]: validation.error }));
+      setStatus({ text: validation.error, nonce: Date.now() });
+      return;
+    }
+    setShortcutErrors((current) => ({ ...current, [field]: null }));
+    setShortcutDrafts((current) => ({ ...current, [field]: validation.normalized }));
+    if (settings[field] === validation.normalized) return;
+    await update({ [field]: validation.normalized } as Partial<Settings>);
+  };
+
+  const startShortcutCapture = (field: ShortcutSettingKey) => {
+    setCapturingShortcut(field);
+    shortcutInputRefs.current[field]?.focus();
   };
 
   return (
@@ -192,6 +507,21 @@ const SettingsConfigView: React.FC = () => {
         </div>
       </div>
       <StatusBanner status={status} />
+      {permissionNotices.length > 0 && (
+        <div className="card permissions-card">
+          <h3>Permissions</h3>
+          <p>Some features are currently unavailable on this machine.</p>
+          <div className="permission-list">
+            {permissionNotices.map((notice) => (
+              <div key={notice.id} className="permission-warning">
+                <strong>{notice.title}</strong>
+                <p>{notice.body}</p>
+              </div>
+            ))}
+          </div>
+          {permissionGuidance && <p className="permission-guidance">{permissionGuidance}</p>}
+        </div>
+      )}
       <div className="card">
         <h3>Appearance</h3>
         <div className="toggle-row">
@@ -267,50 +597,58 @@ const SettingsConfigView: React.FC = () => {
       </div>
       <div className="card">
         <h3>Keyboard shortcuts</h3>
-        <div className="shortcut-row">
-          <div>
-            <strong>Change mode</strong>
-            <p>Cycle or open the mode switcher.</p>
+        {shortcutFieldMeta.map((field) => (
+          <div key={field.key} className="shortcut-row shortcut-config-row">
+            <div>
+              <strong>{field.label}</strong>
+              <p>{field.description}</p>
+              {shortcutErrors[field.key] && (
+                <div className="warning-text">{shortcutErrors[field.key]}</div>
+              )}
+            </div>
+            <div className="shortcut-input-group">
+              <input
+                ref={(element) => {
+                  shortcutInputRefs.current[field.key] = element;
+                }}
+                className={`keycap-input${shortcutErrors[field.key] ? ' input-warning' : ''}${capturingShortcut === field.key ? ' is-capturing' : ''}`}
+                value={shortcutDrafts[field.key]}
+                placeholder="Shift+Cmd+K"
+                onChange={(event) => setShortcutDraft(field.key, event.target.value)}
+                onFocus={() => setCapturingShortcut(field.key)}
+                onBlur={(event) => {
+                  setCapturingShortcut((current) => (current === field.key ? null : current));
+                  void saveShortcut(field.key, event.currentTarget.value);
+                }}
+                onKeyDown={(event) => {
+                  if (capturingShortcut === field.key) {
+                    event.preventDefault();
+                    const shortcut = eventToShortcut(event);
+                    if (!shortcut) return;
+                    setShortcutDraft(field.key, shortcut);
+                    setCapturingShortcut(null);
+                    void saveShortcut(field.key, shortcut);
+                    return;
+                  }
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void saveShortcut(field.key);
+                  }
+                }}
+              />
+              <button
+                className={`chip${capturingShortcut === field.key ? ' active' : ''}`}
+                onClick={() => startShortcutCapture(field.key)}
+              >
+                {capturingShortcut === field.key ? 'Press keys…' : 'Capture'}
+              </button>
+            </div>
           </div>
-          <input
-            className="keycap-input"
-            value={settings.changeModeShortcut}
-            onChange={(event) => update({ changeModeShortcut: event.target.value })}
-          />
-        </div>
-        <div className="shortcut-row">
-          <div>
-            <strong>Cancel Recording</strong>
-            <p>Discards the active recording.</p>
-          </div>
-          <input
-            className="keycap-input"
-            value={settings.cancelKey}
-            onChange={(event) => update({ cancelKey: event.target.value })}
-          />
-        </div>
-        <div className="shortcut-row">
-          <div>
-            <strong>Push to Talk</strong>
-            <p>Hold to record, release to paste.</p>
-          </div>
-          <input
-            className="keycap-input"
-            value={settings.pushToTalkKey}
-            onChange={(event) => update({ pushToTalkKey: event.target.value })}
-          />
-        </div>
-        <div className="shortcut-row">
-          <div>
-            <strong>Toggle Recording</strong>
-            <p>Press once to start or stop recording.</p>
-          </div>
-          <input
-            className="keycap-input"
-            value={settings.toggleRecordingKey}
-            onChange={(event) => update({ toggleRecordingKey: event.target.value })}
-          />
-        </div>
+        ))}
+        <p className="shortcut-help">
+          Focus a field and press the shortcut you want, or click Capture to do the same.
+          Example: <code>Ctrl+Option+Space</code>.
+        </p>
       </div>
       <div className="card">
         <h3>Application</h3>
@@ -815,6 +1153,10 @@ export const HomeView: React.FC<{ stats: HomeStats; historyItems: HistoryItem[] 
 }) => {
   const [showTrends, setShowTrends] = useState(false);
   const [statsMode, setStatsMode] = useState<StatsMode>('rolling');
+  const [homeShortcuts, setHomeShortcuts] = useState<Pick<
+    Settings,
+    'pushToTalkKey' | 'toggleRecordingKey'
+  > | null>(null);
   const series = useMemo(() => buildSeries(historyItems, statsMode), [historyItems, statsMode]);
   const thinkingDots = useMemo(() => createThinkingDots(26), []);
   const [summaryState, setSummaryState] = useState<{
@@ -822,6 +1164,28 @@ export const HomeView: React.FC<{ stats: HomeStats; historyItems: HistoryItem[] 
     source: 'openai' | 'unavailable' | 'error' | 'loading';
   }>({ text: 'Generating summary…', source: 'loading' });
   const summaryKeyRef = useRef('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadShortcuts = () => {
+      window.susurrare.settings
+        .get()
+        .then((settings) => {
+          if (cancelled) return;
+          setHomeShortcuts({
+            pushToTalkKey: settings.pushToTalkKey,
+            toggleRecordingKey: settings.toggleRecordingKey,
+          });
+        })
+        .catch(() => undefined);
+    };
+    loadShortcuts();
+    window.addEventListener('focus', loadShortcuts);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', loadShortcuts);
+    };
+  }, []);
 
   useEffect(() => {
     if (!showTrends) {
@@ -998,7 +1362,10 @@ export const HomeView: React.FC<{ stats: HomeStats; historyItems: HistoryItem[] 
         <div className="action-list">
           <div>
             <h3>Start recording</h3>
-            <p>Hold F15 to dictate, release to paste.</p>
+            <p>
+              Hold {homeShortcuts?.pushToTalkKey ?? 'F15'} to dictate and release to paste, or
+              press {homeShortcuts?.toggleRecordingKey ?? 'F14'} to start and stop recording.
+            </p>
           </div>
           <div>
             <h3>Customize shortcuts</h3>

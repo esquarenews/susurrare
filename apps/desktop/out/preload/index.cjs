@@ -3601,6 +3601,10 @@ const AppInfoSchema = objectType({
   name: stringType(),
   version: stringType()
 });
+const PermissionStatusSchema = objectType({
+  microphone: enumType(["granted", "denied", "prompt"]),
+  accessibility: enumType(["granted", "denied", "prompt"])
+});
 const HistoryPinSchema = objectType({
   id: stringType(),
   pinned: booleanType()
@@ -3649,6 +3653,8 @@ const IpcChannels = {
   updateCheck: "updates:check",
   settingsGet: "settings:get",
   settingsSet: "settings:set",
+  permissionsGet: "permissions:get",
+  permissionsGuidance: "permissions:guidance",
   helpOpen: "help:open",
   appInfo: "app:info",
   modelsList: "models:list",
@@ -3900,6 +3906,19 @@ const api = {
       const envelope = await electron.ipcRenderer.invoke(IpcChannels.settingsSet, wrapEnvelope(partial));
       assertEnvelopeVersion(envelope);
       return SettingsSchema.parse(envelope.payload);
+    }
+  },
+  permissions: {
+    get: async () => {
+      const envelope = await electron.ipcRenderer.invoke(IpcChannels.permissionsGet);
+      assertEnvelopeVersion(envelope);
+      return PermissionStatusSchema.parse(envelope.payload);
+    },
+    guidance: async () => {
+      const envelope = await electron.ipcRenderer.invoke(IpcChannels.permissionsGuidance);
+      assertEnvelopeVersion(envelope);
+      const payload = envelope.payload;
+      return typeof payload.message === "string" ? payload.message : "";
     }
   },
   help: {

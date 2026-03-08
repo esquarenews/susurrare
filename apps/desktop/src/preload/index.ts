@@ -15,6 +15,7 @@ import {
   RecordingCommandSchema,
   RecordingStatusSchema,
   AppInfoSchema,
+  PermissionStatusSchema,
   type Settings,
   SettingsSchema,
   TranscriptionEventSchema,
@@ -117,6 +118,19 @@ const api = {
       const envelope = await ipcRenderer.invoke(IpcChannels.settingsSet, wrapEnvelope(partial));
       assertEnvelopeVersion(envelope);
       return SettingsSchema.parse(envelope.payload);
+    },
+  },
+  permissions: {
+    get: async () => {
+      const envelope = await ipcRenderer.invoke(IpcChannels.permissionsGet);
+      assertEnvelopeVersion(envelope);
+      return PermissionStatusSchema.parse(envelope.payload);
+    },
+    guidance: async () => {
+      const envelope = await ipcRenderer.invoke(IpcChannels.permissionsGuidance);
+      assertEnvelopeVersion(envelope);
+      const payload = envelope.payload as { message?: unknown };
+      return typeof payload.message === 'string' ? payload.message : '';
     },
   },
   help: {

@@ -39,6 +39,12 @@ export const AppInfoSchema = z.object({
 });
 export type AppInfo = z.infer<typeof AppInfoSchema>;
 
+export const PermissionStatusSchema = z.object({
+  microphone: z.enum(['granted', 'denied', 'prompt']),
+  accessibility: z.enum(['granted', 'denied', 'prompt']),
+});
+export type PermissionStatus = z.infer<typeof PermissionStatusSchema>;
+
 export const HistoryPinSchema = z.object({
   id: z.string(),
   pinned: z.boolean(),
@@ -99,6 +105,8 @@ export const IpcChannels = {
   updateCheck: 'updates:check',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
+  permissionsGet: 'permissions:get',
+  permissionsGuidance: 'permissions:guidance',
   helpOpen: 'help:open',
   appInfo: 'app:info',
   modelsList: 'models:list',

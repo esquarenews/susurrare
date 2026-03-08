@@ -535,6 +535,17 @@ input {
   background: color-mix(in srgb, var(--accent-soft) 42%, var(--surface-strong));
 }
 
+.warning-pill {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+  background: color-mix(in srgb, var(--warning) 14%, var(--surface-strong));
+  color: var(--text);
+}
+
+.warning-pill:hover {
+  border-color: color-mix(in srgb, var(--warning) 65%, var(--border));
+  background: color-mix(in srgb, var(--warning) 22%, var(--surface-strong));
+}
+
 .icon-button {
   border: none;
   background: var(--surface-strong);
@@ -1527,6 +1538,66 @@ input {
   color: #b42318;
   font-size: 12px;
   margin-top: 4px;
+}
+
+.shortcut-config-row {
+  align-items: start;
+}
+
+.shortcut-input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.keycap-input.is-capturing,
+.chip.active {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  box-shadow: var(--focus-ring);
+}
+
+.shortcut-help {
+  margin: 12px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.shortcut-help code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.permissions-card {
+  border-color: color-mix(in srgb, var(--warning) 30%, var(--border));
+}
+
+.permission-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.permission-warning {
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--border));
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface-strong));
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.permission-warning strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.permission-warning p,
+.permission-guidance {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.permission-guidance {
+  margin-top: 12px;
 }
 .history-actions {
   display: flex;

@@ -10568,6 +10568,10 @@ objectType({
   version: stringType()
 });
 objectType({
+  microphone: enumType(["granted", "denied", "prompt"]),
+  accessibility: enumType(["granted", "denied", "prompt"])
+});
+objectType({
   id: stringType(),
   pinned: booleanType()
 });
@@ -10772,6 +10776,181 @@ const StatCard = ({ label, value }) => /* @__PURE__ */ jsxRuntimeExports.jsxs("d
   /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "stat-value", children: value }),
   /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "stat-label", children: label })
 ] });
+const shortcutModifierOrder = ["Shift", "Ctrl", "Option", "Cmd"];
+const modifierAliases = {
+  shift: "Shift",
+  ctrl: "Ctrl",
+  control: "Ctrl",
+  alt: "Option",
+  option: "Option",
+  cmd: "Cmd",
+  command: "Cmd",
+  meta: "Cmd"
+};
+const specialKeyAliases = {
+  esc: "Escape",
+  escape: "Escape",
+  enter: "Enter",
+  return: "Enter",
+  space: "Space",
+  spacebar: "Space",
+  tab: "Tab",
+  backspace: "Backspace",
+  delete: "Delete",
+  del: "Delete",
+  insert: "Insert",
+  home: "Home",
+  end: "End",
+  pageup: "PageUp",
+  "page up": "PageUp",
+  pagedown: "PageDown",
+  "page down": "PageDown",
+  up: "ArrowUp",
+  arrowup: "ArrowUp",
+  down: "ArrowDown",
+  arrowdown: "ArrowDown",
+  left: "ArrowLeft",
+  arrowleft: "ArrowLeft",
+  right: "ArrowRight",
+  arrowright: "ArrowRight",
+  semicolon: "Semicolon",
+  equal: "Equal",
+  comma: "Comma",
+  minus: "Minus",
+  period: "Period",
+  slash: "Slash",
+  backquote: "Backquote",
+  bracketleft: "BracketLeft",
+  backslash: "Backslash",
+  bracketright: "BracketRight",
+  quote: "Quote"
+};
+const keyboardSymbolMap = {
+  ";": "Semicolon",
+  "=": "Equal",
+  ",": "Comma",
+  "-": "Minus",
+  ".": "Period",
+  "/": "Slash",
+  "`": "Backquote",
+  "[": "BracketLeft",
+  "\\": "Backslash",
+  "]": "BracketRight",
+  "'": "Quote"
+};
+const shortcutFieldMeta = [
+  {
+    key: "changeModeShortcut",
+    label: "Change mode",
+    description: "Cycle or open the mode switcher."
+  },
+  {
+    key: "cancelKey",
+    label: "Cancel Recording",
+    description: "Discards the active recording."
+  },
+  {
+    key: "pushToTalkKey",
+    label: "Push to Talk",
+    description: "Hold to record, release to paste."
+  },
+  {
+    key: "toggleRecordingKey",
+    label: "Toggle Recording",
+    description: "Press once to start or stop recording."
+  }
+];
+const normalizeShortcutKeyToken = (token) => {
+  const trimmed = token.trim();
+  if (!trimmed) return null;
+  const lowered = trimmed.toLowerCase();
+  if (modifierAliases[lowered]) {
+    return { kind: "modifier", value: modifierAliases[lowered] };
+  }
+  if (specialKeyAliases[lowered]) {
+    return { kind: "key", value: specialKeyAliases[lowered] };
+  }
+  if (keyboardSymbolMap[trimmed]) {
+    return { kind: "key", value: keyboardSymbolMap[trimmed] };
+  }
+  if (/^[a-z]$/i.test(trimmed)) {
+    return { kind: "key", value: trimmed.toUpperCase() };
+  }
+  if (/^\d$/.test(trimmed)) {
+    return { kind: "key", value: trimmed };
+  }
+  if (/^f([1-9]|1\d|2[0-4])$/i.test(trimmed)) {
+    return { kind: "key", value: trimmed.toUpperCase() };
+  }
+  return null;
+};
+const formatShortcut = (modifiers, key) => {
+  const ordered = shortcutModifierOrder.filter((modifier) => modifiers.includes(modifier));
+  return [...ordered, key].join("+");
+};
+const validateShortcut = (value) => {
+  const raw = value.trim();
+  if (!raw) {
+    return {
+      valid: false,
+      error: "Shortcut is required."
+    };
+  }
+  const rawTokens = raw.split("+");
+  if (rawTokens.some((token) => token.trim().length === 0)) {
+    return {
+      valid: false,
+      error: "Invalid syntax. Use + between keys, for example Shift+Cmd+K."
+    };
+  }
+  const tokens = rawTokens.map((token) => token.trim());
+  if (tokens.length === 0) {
+    return {
+      valid: false,
+      error: "Shortcut is required."
+    };
+  }
+  const modifiers = [];
+  for (const token of tokens.slice(0, -1)) {
+    const normalized = normalizeShortcutKeyToken(token);
+    if (!normalized || normalized.kind !== "modifier") {
+      return {
+        valid: false,
+        error: "Invalid syntax. Put modifiers first and finish with a key, for example Ctrl+Option+Space."
+      };
+    }
+    if (modifiers.includes(normalized.value)) {
+      return {
+        valid: false,
+        error: "Invalid syntax. Remove duplicate modifiers."
+      };
+    }
+    modifiers.push(normalized.value);
+  }
+  const main = normalizeShortcutKeyToken(tokens[tokens.length - 1]);
+  if (!main || main.kind !== "key") {
+    return {
+      valid: false,
+      error: "Invalid syntax. The shortcut needs a final non-modifier key, for example Shift+Cmd+K."
+    };
+  }
+  return {
+    valid: true,
+    normalized: formatShortcut(modifiers, main.value)
+  };
+};
+const eventToShortcut = (event) => {
+  const lowered = event.key.toLowerCase();
+  if (lowered in modifierAliases) return null;
+  const main = normalizeShortcutKeyToken(event.key) ?? normalizeShortcutKeyToken(event.code.replace(/^(Key|Digit)/, ""));
+  if (!main || main.kind !== "key") return null;
+  const modifiers = [];
+  if (event.shiftKey) modifiers.push("Shift");
+  if (event.ctrlKey) modifiers.push("Ctrl");
+  if (event.altKey) modifiers.push("Option");
+  if (event.metaKey) modifiers.push("Cmd");
+  return formatShortcut(modifiers, main.value);
+};
 const StatusBanner = ({ status }) => {
   const message = status.text;
   const [visible, setVisible] = reactExports.useState(false);
@@ -10839,13 +11018,85 @@ const ViewTitle = ({ title, sectionId, ariaLabel }) => /* @__PURE__ */ jsxRuntim
     }
   )
 ] }) });
+const buildPermissionNotices = (permissions) => {
+  if (!permissions) return [];
+  const notices = [];
+  if (permissions.accessibility !== "granted") {
+    notices.push({
+      id: "accessibility",
+      title: "Global hold-to-talk is unavailable",
+      body: "Grant Accessibility and Input Monitoring access to Electron to enable low-level push-to-talk detection. Toggle, cancel, and mode shortcuts may still work."
+    });
+  }
+  if (permissions.microphone !== "granted") {
+    notices.push({
+      id: "microphone",
+      title: "Microphone capture is unavailable",
+      body: "Grant microphone access so Susurrare can record audio for transcription."
+    });
+  }
+  return notices;
+};
+const shortcutDraftsFromSettings = (value) => ({
+  changeModeShortcut: value.changeModeShortcut,
+  cancelKey: value.cancelKey,
+  pushToTalkKey: value.pushToTalkKey,
+  toggleRecordingKey: value.toggleRecordingKey
+});
 const SettingsConfigView = () => {
   const [settings, setSettings] = reactExports.useState(null);
   const [status, setStatus] = reactExports.useState({ text: null, nonce: 0 });
   const [apiKeyInput, setApiKeyInput] = reactExports.useState("");
+  const [permissions, setPermissions] = reactExports.useState(null);
+  const [permissionGuidance, setPermissionGuidance] = reactExports.useState("");
+  const [shortcutDrafts, setShortcutDrafts] = reactExports.useState({
+    changeModeShortcut: "",
+    cancelKey: "",
+    pushToTalkKey: "",
+    toggleRecordingKey: ""
+  });
+  const [shortcutErrors, setShortcutErrors] = reactExports.useState({
+    changeModeShortcut: null,
+    cancelKey: null,
+    pushToTalkKey: null,
+    toggleRecordingKey: null
+  });
+  const [capturingShortcut, setCapturingShortcut] = reactExports.useState(null);
+  const settingsUpdateQueueRef = reactExports.useRef(Promise.resolve());
+  const shortcutInputRefs = reactExports.useRef({
+    changeModeShortcut: null,
+    cancelKey: null,
+    pushToTalkKey: null,
+    toggleRecordingKey: null
+  });
+  const refreshPermissions = async () => {
+    try {
+      const [nextPermissions, guidance] = await Promise.all([
+        window.susurrare.permissions.get(),
+        window.susurrare.permissions.guidance()
+      ]);
+      setPermissions(nextPermissions);
+      setPermissionGuidance(guidance);
+    } catch (error) {
+      console.error(error);
+    }
+  };
   reactExports.useEffect(() => {
-    window.susurrare.settings.get().then(setSettings).catch(console.error);
+    window.susurrare.settings.get().then((next) => {
+      setSettings(next);
+      setShortcutDrafts(shortcutDraftsFromSettings(next));
+    }).catch(console.error);
+    void refreshPermissions();
+    const handleFocus = () => {
+      void refreshPermissions();
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
   }, []);
+  const permissionNotices = reactExports.useMemo(
+    () => buildPermissionNotices(permissions),
+    [permissions]
+  );
   if (!settings) {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "view", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "view-header", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
@@ -10866,22 +11117,28 @@ const SettingsConfigView = () => {
     ] });
   }
   const update = async (partial) => {
-    try {
-      const next = await window.susurrare.settings.set(partial);
-      setSettings(next);
-      if (partial.theme) {
-        const root2 = document.documentElement;
-        if (partial.theme === "system") {
-          root2.removeAttribute("data-theme");
-        } else {
-          root2.setAttribute("data-theme", partial.theme);
+    const runUpdate = async () => {
+      try {
+        const next = await window.susurrare.settings.set(partial);
+        setSettings(next);
+        if (partial.theme) {
+          const root2 = document.documentElement;
+          if (partial.theme === "system") {
+            root2.removeAttribute("data-theme");
+          } else {
+            root2.setAttribute("data-theme", partial.theme);
+          }
         }
+        setStatus({ text: "Settings updated.", nonce: Date.now() });
+      } catch (error) {
+        console.error(error);
+        setStatus({ text: "Unable to save settings.", nonce: Date.now() });
+        throw error;
       }
-      setStatus({ text: "Settings updated.", nonce: Date.now() });
-    } catch (error) {
-      console.error(error);
-      setStatus({ text: "Unable to save settings.", nonce: Date.now() });
-    }
+    };
+    const queued = settingsUpdateQueueRef.current.then(runUpdate, runUpdate);
+    settingsUpdateQueueRef.current = queued.catch(() => void 0);
+    return queued;
   };
   const saveApiKey = async () => {
     const trimmed = apiKeyInput.trim();
@@ -10891,6 +11148,31 @@ const SettingsConfigView = () => {
   };
   const clearApiKey = async () => {
     await update({ openAiApiKey: void 0 });
+  };
+  const setShortcutDraft = (field, value) => {
+    setShortcutDrafts((current) => ({ ...current, [field]: value }));
+    const validation = validateShortcut(value);
+    setShortcutErrors((current) => ({
+      ...current,
+      [field]: validation.valid ? null : validation.error
+    }));
+  };
+  const saveShortcut = async (field, nextValue = shortcutDrafts[field]) => {
+    if (!settings) return;
+    const validation = validateShortcut(nextValue);
+    if (!validation.valid) {
+      setShortcutErrors((current) => ({ ...current, [field]: validation.error }));
+      setStatus({ text: validation.error, nonce: Date.now() });
+      return;
+    }
+    setShortcutErrors((current) => ({ ...current, [field]: null }));
+    setShortcutDrafts((current) => ({ ...current, [field]: validation.normalized }));
+    if (settings[field] === validation.normalized) return;
+    await update({ [field]: validation.normalized });
+  };
+  const startShortcutCapture = (field) => {
+    setCapturingShortcut(field);
+    shortcutInputRefs.current[field]?.focus();
   };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "view", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "view-header", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
@@ -10905,6 +11187,15 @@ const SettingsConfigView = () => {
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "App preferences, shortcuts, updates, and API access." })
     ] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(StatusBanner, { status }),
+    permissionNotices.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card permissions-card", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Permissions" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Some features are currently unavailable on this machine." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "permission-list", children: permissionNotices.map((notice) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "permission-warning", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: notice.title }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: notice.body })
+      ] }, notice.id)) }),
+      permissionGuidance && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "permission-guidance", children: permissionGuidance })
+    ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Appearance" }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toggle-row", children: [
@@ -10987,61 +11278,59 @@ const SettingsConfigView = () => {
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Keyboard shortcuts" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shortcut-row", children: [
+      shortcutFieldMeta.map((field) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shortcut-row shortcut-config-row", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Change mode" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Cycle or open the mode switcher." })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: field.label }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: field.description }),
+          shortcutErrors[field.key] && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "warning-text", children: shortcutErrors[field.key] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            className: "keycap-input",
-            value: settings.changeModeShortcut,
-            onChange: (event) => update({ changeModeShortcut: event.target.value })
-          }
-        )
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shortcut-row", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Cancel Recording" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Discards the active recording." })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            className: "keycap-input",
-            value: settings.cancelKey,
-            onChange: (event) => update({ cancelKey: event.target.value })
-          }
-        )
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shortcut-row", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Push to Talk" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Hold to record, release to paste." })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            className: "keycap-input",
-            value: settings.pushToTalkKey,
-            onChange: (event) => update({ pushToTalkKey: event.target.value })
-          }
-        )
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shortcut-row", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Toggle Recording" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Press once to start or stop recording." })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            className: "keycap-input",
-            value: settings.toggleRecordingKey,
-            onChange: (event) => update({ toggleRecordingKey: event.target.value })
-          }
-        )
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shortcut-input-group", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              ref: (element) => {
+                shortcutInputRefs.current[field.key] = element;
+              },
+              className: `keycap-input${shortcutErrors[field.key] ? " input-warning" : ""}${capturingShortcut === field.key ? " is-capturing" : ""}`,
+              value: shortcutDrafts[field.key],
+              placeholder: "Shift+Cmd+K",
+              onChange: (event) => setShortcutDraft(field.key, event.target.value),
+              onFocus: () => setCapturingShortcut(field.key),
+              onBlur: (event) => {
+                setCapturingShortcut((current) => current === field.key ? null : current);
+                void saveShortcut(field.key, event.currentTarget.value);
+              },
+              onKeyDown: (event) => {
+                if (capturingShortcut === field.key) {
+                  event.preventDefault();
+                  const shortcut = eventToShortcut(event);
+                  if (!shortcut) return;
+                  setShortcutDraft(field.key, shortcut);
+                  setCapturingShortcut(null);
+                  void saveShortcut(field.key, shortcut);
+                  return;
+                }
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void saveShortcut(field.key);
+                }
+              }
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              className: `chip${capturingShortcut === field.key ? " active" : ""}`,
+              onClick: () => startShortcutCapture(field.key),
+              children: capturingShortcut === field.key ? "Press keys…" : "Capture"
+            }
+          )
+        ] })
+      ] }, field.key)),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "shortcut-help", children: [
+        "Focus a field and press the shortcut you want, or click Capture to do the same. Example: ",
+        /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: "Ctrl+Option+Space" }),
+        "."
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card", children: [
@@ -12920,11 +13209,23 @@ const computeHomeStats = (items) => {
     savedThisWeek: `${Math.max(0, Math.round(totalMinutes))} mins`
   };
 };
+const getMissingPermissionCount = (permissions) => {
+  if (!permissions) return 0;
+  let count = 0;
+  if (permissions.accessibility !== "granted") count += 1;
+  if (permissions.microphone !== "granted") count += 1;
+  return count;
+};
 const App = () => {
   const [active, setActive] = reactExports.useState("home");
   const [recordingStatus, setRecordingStatus] = reactExports.useState("idle");
+  const [permissions, setPermissions] = reactExports.useState(null);
   const [historyItems, setHistoryItems] = reactExports.useState([]);
   const homeStats = reactExports.useMemo(() => computeHomeStats(historyItems), [historyItems]);
+  const missingPermissionCount = reactExports.useMemo(
+    () => getMissingPermissionCount(permissions),
+    [permissions]
+  );
   const previousStatusRef = reactExports.useRef("idle");
   reactExports.useEffect(() => {
     const applyTheme = (value) => {
@@ -12946,6 +13247,20 @@ const App = () => {
   reactExports.useEffect(() => {
     previousStatusRef.current = recordingStatus;
   }, [recordingStatus]);
+  reactExports.useEffect(() => {
+    let cancelled = false;
+    const loadPermissions = () => {
+      window.susurrare.permissions.get().then((next) => {
+        if (!cancelled) setPermissions(next);
+      }).catch(() => void 0);
+    };
+    loadPermissions();
+    window.addEventListener("focus", loadPermissions);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", loadPermissions);
+    };
+  }, []);
   reactExports.useEffect(() => {
     window.susurrare.history.list().then(setHistoryItems).catch(() => void 0);
     const unsubscribe = window.susurrare.history.onUpdated((items) => {
@@ -12984,6 +13299,11 @@ const App = () => {
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Susurrare" })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "top-actions", children: [
+          missingPermissionCount > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "pill warning-pill", onClick: () => setActive("configuration"), children: [
+            "Permissions needed (",
+            missingPermissionCount,
+            ")"
+          ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `recording-pill ${recordingStatus}`, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "recording-dot" }),
             recordingStatus === "recording" ? "Recording" : recordingStatus === "processing" ? "Processing" : recordingStatus === "error" ? "Error" : "Idle"
