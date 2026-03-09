@@ -219,7 +219,13 @@ export const App: React.FC = () => {
       case 'diagnostics':
         return <DiagnosticsView />;
       default:
-        return <HomeView stats={homeStats} historyItems={historyItems} />;
+        return (
+          <HomeView
+            stats={homeStats}
+            historyItems={historyItems}
+            onNavigate={setActive}
+          />
+        );
     }
   }, [active, homeStats, historyItems]);
 

@@ -1147,10 +1147,11 @@ const createThinkingDots = (count: number) => {
   });
 };
 
-export const HomeView: React.FC<{ stats: HomeStats; historyItems: HistoryItem[] }> = ({
-  stats,
-  historyItems,
-}) => {
+export const HomeView: React.FC<{
+  stats: HomeStats;
+  historyItems: HistoryItem[];
+  onNavigate: (view: 'shortcuts' | 'modes' | 'vocabulary') => void;
+}> = ({ stats, historyItems, onNavigate }) => {
   const [showTrends, setShowTrends] = useState(false);
   const [statsMode, setStatsMode] = useState<StatsMode>('rolling');
   const [homeShortcuts, setHomeShortcuts] = useState<Pick<
@@ -1360,24 +1361,39 @@ export const HomeView: React.FC<{ stats: HomeStats; historyItems: HistoryItem[] 
       <div className="card">
         <h2>Get started</h2>
         <div className="action-list">
-          <div>
+          <div className="action-card">
             <h3>Start recording</h3>
             <p>
               Hold {homeShortcuts?.pushToTalkKey ?? 'F15'} to dictate and release to paste, or
               press {homeShortcuts?.toggleRecordingKey ?? 'F14'} to start and stop recording.
             </p>
           </div>
-          <div>
-            <h3>Customize shortcuts</h3>
-            <p>Set your push-to-talk and cancel keys.</p>
+          <div className="action-card action-card-nav">
+            <div className="action-card-copy">
+              <h3>Customize shortcuts</h3>
+              <p>Set your push-to-talk and cancel keys.</p>
+            </div>
+            <button className="chip" onClick={() => onNavigate('shortcuts')}>
+              Take me there
+            </button>
           </div>
-          <div>
-            <h3>Create a mode</h3>
-            <p>Tailor profiles for meetings, writing, or coding.</p>
+          <div className="action-card action-card-nav">
+            <div className="action-card-copy">
+              <h3>Create a mode</h3>
+              <p>Tailor profiles for meetings, writing, or coding.</p>
+            </div>
+            <button className="chip" onClick={() => onNavigate('modes')}>
+              Take me there
+            </button>
           </div>
-          <div>
-            <h3>Add vocabulary</h3>
-            <p>Teach Susurrare names, acronyms, and jargon.</p>
+          <div className="action-card action-card-nav">
+            <div className="action-card-copy">
+              <h3>Add vocabulary</h3>
+              <p>Teach Susurrare names, acronyms, and jargon.</p>
+            </div>
+            <button className="chip" onClick={() => onNavigate('vocabulary')}>
+              Take me there
+            </button>
           </div>
         </div>
       </div>

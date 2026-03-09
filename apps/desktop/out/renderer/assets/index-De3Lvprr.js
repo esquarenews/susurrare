@@ -11750,10 +11750,7 @@ const createThinkingDots = (count) => {
     };
   });
 };
-const HomeView = ({
-  stats,
-  historyItems
-}) => {
+const HomeView = ({ stats, historyItems, onNavigate }) => {
   const [showTrends, setShowTrends] = reactExports.useState(false);
   const [statsMode, setStatsMode] = reactExports.useState("rolling");
   const [homeShortcuts, setHomeShortcuts] = reactExports.useState(null);
@@ -11927,7 +11924,7 @@ const HomeView = ({
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "Get started" }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "action-list", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "action-card", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Start recording" }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
             "Hold ",
@@ -11937,17 +11934,26 @@ const HomeView = ({
             " to start and stop recording."
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Customize shortcuts" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Set your push-to-talk and cancel keys." })
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "action-card action-card-nav", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "action-card-copy", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Customize shortcuts" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Set your push-to-talk and cancel keys." })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chip", onClick: () => onNavigate("shortcuts"), children: "Take me there" })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Create a mode" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Tailor profiles for meetings, writing, or coding." })
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "action-card action-card-nav", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "action-card-copy", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Create a mode" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Tailor profiles for meetings, writing, or coding." })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chip", onClick: () => onNavigate("modes"), children: "Take me there" })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Add vocabulary" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Teach Susurrare names, acronyms, and jargon." })
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "action-card action-card-nav", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "action-card-copy", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Add vocabulary" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Teach Susurrare names, acronyms, and jargon." })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chip", onClick: () => onNavigate("vocabulary"), children: "Take me there" })
         ] })
       ] })
     ] }),
@@ -13346,7 +13352,14 @@ const App = () => {
       case "diagnostics":
         return /* @__PURE__ */ jsxRuntimeExports.jsx(DiagnosticsView, {});
       default:
-        return /* @__PURE__ */ jsxRuntimeExports.jsx(HomeView, { stats: homeStats, historyItems });
+        return /* @__PURE__ */ jsxRuntimeExports.jsx(
+          HomeView,
+          {
+            stats: homeStats,
+            historyItems,
+            onNavigate: setActive
+          }
+        );
     }
   }, [active, homeStats, historyItems]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "app-shell", children: [

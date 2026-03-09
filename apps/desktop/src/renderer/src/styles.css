@@ -997,6 +997,21 @@ input {
   background: var(--surface-strong);
 }
 
+.action-card {
+  display: grid;
+  gap: 6px;
+}
+
+.action-card-nav {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.action-card-copy {
+  min-width: 0;
+}
+
 .action-list h3 {
   margin: 0 0 4px;
 }
