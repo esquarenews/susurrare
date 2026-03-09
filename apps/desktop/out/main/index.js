@@ -1,4 +1,4 @@
-import require$$1$3, { clipboard, systemPreferences, BrowserWindow, screen, app, safeStorage, ipcMain, shell, session, nativeTheme, globalShortcut, Tray, Menu, nativeImage } from "electron";
+import require$$1$3, { clipboard, systemPreferences, BrowserWindow, screen, app, safeStorage, ipcMain, shell, session, powerMonitor, nativeTheme, globalShortcut, Tray, Menu, nativeImage } from "electron";
 import require$$1$4, { execFile, spawn } from "child_process";
 import require$$1, { join } from "path";
 import require$$0$3, { existsSync, readFileSync as readFileSync$1, writeFileSync as writeFileSync$1, mkdirSync, createWriteStream, unlinkSync } from "fs";
@@ -21603,6 +21603,20 @@ objectType({
   success: booleanType(),
   errorCode: stringType().optional()
 });
+const shouldWarmSoundPlayer = ({
+  nowMs,
+  lastWarmAtMs,
+  inFlight,
+  force = false,
+  minIntervalMs,
+  staleAfterMs
+}) => {
+  if (inFlight) return false;
+  const elapsedMs = Math.max(0, nowMs - lastWarmAtMs);
+  if (elapsedMs < minIntervalMs) return false;
+  if (force) return true;
+  return elapsedMs >= staleAfterMs;
+};
 const API_KEY_STORED_MARKER = "stored-in-secure-store";
 const stripApiKeyFromSettings = (settings2) => SettingsSchema.parse({
   ...settings2,
@@ -22127,6 +22141,18 @@ const stopHook = () => {
   loadUiohook().uIOhook.stop();
   hookStarted = false;
 };
+const pause$1 = (ms2) => new Promise((resolve2) => {
+  setTimeout(resolve2, ms2);
+});
+const runOsaScript = (script) => new Promise((resolve2, reject2) => {
+  execFile("/usr/bin/osascript", ["-e", script], (error2) => {
+    if (error2) {
+      reject2(error2);
+    } else {
+      resolve2();
+    }
+  });
+});
 const normalizeShortcut$1 = (shortcut) => {
   const tokens = shortcut.split("+").map((token) => token.trim()).filter(Boolean);
   const modifiers = new Set(tokens.map((token) => token.toLowerCase()));
@@ -22560,7 +22586,7 @@ const ensureOverlayWindow = () => {
   });
   overlayWindow.webContents.on("did-finish-load", () => {
     overlayReady = true;
-    if (overlayWindow) {
+    if (overlayWindow && !overlayWindow.isDestroyed() && !overlayWindow.webContents.isDestroyed()) {
       overlayWindow.webContents.executeJavaScript(`window.__setOverlayState(${JSON.stringify(overlayState)})`).catch(() => void 0);
       if (overlayText) {
         overlayWindow.webContents.executeJavaScript(`window.__setOverlayText(${JSON.stringify(overlayText)})`).catch(() => void 0);
@@ -22573,38 +22599,70 @@ const ensureOverlayWindow = () => {
 };
 const updateOverlayState = async (state2) => {
   overlayState = state2;
-  if (!overlayWindow) return;
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  if (overlayWindow.webContents.isDestroyed()) return;
   if (!overlayReady) return;
-  await overlayWindow.webContents.executeJavaScript(
-    `window.__setOverlayState(${JSON.stringify(state2)})`
-  );
+  try {
+    await overlayWindow.webContents.executeJavaScript(
+      `window.__setOverlayState(${JSON.stringify(state2)})`
+    );
+  } catch {
+    return;
+  }
   if (state2 !== "recording") {
-    await overlayWindow.webContents.executeJavaScript(`window.__setOverlayText('')`);
+    try {
+      await overlayWindow.webContents.executeJavaScript(`window.__setOverlayText('')`);
+    } catch {
+    }
   }
 };
 const updateOverlayWave = async (wave) => {
-  if (!overlayWindow || !overlayReady) return;
+  if (!overlayWindow || overlayWindow.isDestroyed() || !overlayReady) return;
+  if (overlayWindow.webContents.isDestroyed()) return;
   if (overlayState !== "recording") return;
-  if (!overlayWindow.isVisible()) return;
+  try {
+    if (!overlayWindow.isVisible()) return;
+  } catch {
+    return;
+  }
   const now = Date.now();
   if (now - lastWaveSentAt < 20) return;
   lastWaveSentAt = now;
   const script = `window.__setOverlayWave(${JSON.stringify(wave)})`;
-  await overlayWindow.webContents.executeJavaScript(script);
+  try {
+    await overlayWindow.webContents.executeJavaScript(script);
+  } catch {
+  }
 };
 const updateOverlayText = async (text) => {
   overlayText = text;
-  if (!overlayWindow || !overlayReady) return;
-  if (!overlayWindow.isVisible()) return;
+  if (!overlayWindow || overlayWindow.isDestroyed() || !overlayReady) return;
+  if (overlayWindow.webContents.isDestroyed()) return;
+  try {
+    if (!overlayWindow.isVisible()) return;
+  } catch {
+    return;
+  }
   const script = `window.__setOverlayText(${JSON.stringify(text)})`;
-  await overlayWindow.webContents.executeJavaScript(script);
+  try {
+    await overlayWindow.webContents.executeJavaScript(script);
+  } catch {
+  }
 };
 const updateOverlayMode = async (text) => {
   overlayMode = text;
-  if (!overlayWindow || !overlayReady) return;
-  if (!overlayWindow.isVisible()) return;
+  if (!overlayWindow || overlayWindow.isDestroyed() || !overlayReady) return;
+  if (overlayWindow.webContents.isDestroyed()) return;
+  try {
+    if (!overlayWindow.isVisible()) return;
+  } catch {
+    return;
+  }
   const script = `window.__setOverlayMode(${JSON.stringify(text)})`;
-  await overlayWindow.webContents.executeJavaScript(script);
+  try {
+    await overlayWindow.webContents.executeJavaScript(script);
+  } catch {
+  }
 };
 const computeWaveform = (data, bins = 32) => {
   if (data.length < 2) return new Array(bins).fill(0);
@@ -22791,23 +22849,18 @@ const macosAdapter = {
   insertText: {
     async atCursor(text) {
       clipboard.writeText(text);
+      const pasteScript = 'tell application "System Events" to keystroke "v" using {command down}';
       try {
-        await new Promise((resolve2, reject2) => {
-          execFile(
-            "/usr/bin/osascript",
-            ["-e", 'tell application "System Events" to keystroke "v" using {command down}'],
-            (error2) => {
-              if (error2) {
-                reject2(error2);
-              } else {
-                resolve2();
-              }
-            }
-          );
-        });
+        await runOsaScript(pasteScript);
         return { success: true, method: "accessibility" };
       } catch {
-        return { success: false, method: "clipboard" };
+        try {
+          await pause$1(70);
+          await runOsaScript(pasteScript);
+          return { success: true, method: "accessibility" };
+        } catch {
+          return { success: false, method: "clipboard" };
+        }
       }
     }
   },
@@ -37392,6 +37445,11 @@ let silenceStopRequested = false;
 const SILENCE_RMS_THRESHOLD = 0.012;
 const RECORDING_LIMIT_WARNING_WINDOW_MS = 6e4;
 const RECORDING_LIMIT_MIN_WARNING_MS = 5e3;
+const SOUND_WARM_STALE_AFTER_MS = 1e3 * 60 * 6;
+const SOUND_WARM_MIN_INTERVAL_MS = 800;
+const SOUND_WARM_MAINTENANCE_INTERVAL_MS = 1e3 * 60 * 2;
+let soundWarmTimer = null;
+let recordingTargetAppName = null;
 const shouldShowOverlay = () => settings.overlayStyle !== "hide";
 const ensureMicrophoneAccess = async () => {
   if (process.platform !== "darwin") return true;
@@ -37401,6 +37459,25 @@ const ensureMicrophoneAccess = async () => {
   return systemPreferences.askForMediaAccess("microphone");
 };
 const isRecord = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+const normalizeAppName = (value) => value?.trim().toLowerCase() ?? "";
+const isSusurrareAppName = (value) => normalizeAppName(value).includes("susurrare");
+const isSameAppName = (first, second) => {
+  const normalizedFirst = normalizeAppName(first);
+  const normalizedSecond = normalizeAppName(second);
+  return normalizedFirst.length > 0 && normalizedFirst === normalizedSecond;
+};
+const quoteAppleScriptString = (value) => value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+const activateAppByName = async (name) => {
+  if (process.platform !== "darwin") return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  const script = `tell application "${quoteAppleScriptString(trimmed)}" to activate`;
+  return new Promise((resolve2) => {
+    execFile("/usr/bin/osascript", ["-e", script], (error2) => {
+      resolve2(!error2);
+    });
+  });
+};
 const stripControlCharacters = (value) => {
   let output = "";
   for (let index2 = 0; index2 < value.length; index2 += 1) {
@@ -37527,9 +37604,24 @@ const isAllowedRendererNavigation = (url, devServerOrigin) => {
     return false;
   }
 };
+const getMainWindow = () => {
+  if (!mainWindow) return null;
+  try {
+    if (mainWindow.isDestroyed()) {
+      mainWindow = null;
+      hotkeyAttached = false;
+      return null;
+    }
+    return mainWindow;
+  } catch {
+    mainWindow = null;
+    hotkeyAttached = false;
+    return null;
+  }
+};
 const createWindow = () => {
   const devServerOrigin = resolveDevServerOrigin();
-  mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 980,
     height: 720,
     minWidth: 900,
@@ -37550,17 +37642,24 @@ const createWindow = () => {
       allowRunningInsecureContent: false
     }
   });
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  mainWindow.webContents.on("will-navigate", (event, url) => {
+  mainWindow = win;
+  win.on("closed", () => {
+    if (mainWindow === win) {
+      mainWindow = null;
+    }
+    hotkeyAttached = false;
+  });
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win.webContents.on("will-navigate", (event, url) => {
     if (isAllowedRendererNavigation(url, devServerOrigin)) return;
     event.preventDefault();
   });
   if (process.env.VITE_DEV_SERVER_URL && isAllowedRendererNavigation(process.env.VITE_DEV_SERVER_URL, devServerOrigin)) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+    win.loadFile(join(__dirname, "../renderer/index.html"));
   }
-  attachLocalHotkeys(mainWindow);
+  attachLocalHotkeys(win);
   sendRecordingStatus("idle");
 };
 const applyLoginItemSettings = () => {
@@ -37602,7 +37701,8 @@ const getEffectiveTheme = (theme) => {
 };
 let startSoundPath = null;
 let endSoundPath = null;
-let soundPlayerWarmed = false;
+let lastSoundWarmAt = 0;
+let soundWarmInFlight = false;
 const resolveSoundPath = (fileName) => {
   const basePath = app.isPackaged ? process.resourcesPath : app.getAppPath();
   const candidates = [
@@ -37617,21 +37717,51 @@ const preloadSoundEffects = () => {
   startSoundPath ??= resolveSoundPath("start_recording.wav");
   endSoundPath ??= resolveSoundPath("end-recording.wav");
 };
-const warmSoundPlayer = () => {
+const warmSoundPlayer = (options = {}) => {
   if (process.platform !== "darwin") return;
-  if (soundPlayerWarmed) return;
-  soundPlayerWarmed = true;
   if (!startSoundPath || !endSoundPath) preloadSoundEffects();
   const warmPath = startSoundPath ?? endSoundPath;
   if (!warmPath) return;
+  const nowMs = Date.now();
+  if (!shouldWarmSoundPlayer({
+    nowMs,
+    lastWarmAtMs: lastSoundWarmAt,
+    inFlight: soundWarmInFlight,
+    force: options.force,
+    minIntervalMs: SOUND_WARM_MIN_INTERVAL_MS,
+    staleAfterMs: SOUND_WARM_STALE_AFTER_MS
+  })) {
+    return;
+  }
+  soundWarmInFlight = true;
+  lastSoundWarmAt = nowMs;
   try {
-    const child = spawn("/usr/bin/afplay", ["-v", "0", "-t", "0.01", warmPath], {
+    const child = spawn("/usr/bin/afplay", ["-v", "0", "-t", "0.02", warmPath], {
       stdio: "ignore"
+    });
+    child.once("error", (error2) => {
+      soundWarmInFlight = false;
+      recordError(error2);
+    });
+    child.once("close", () => {
+      soundWarmInFlight = false;
     });
     child.unref();
   } catch (error2) {
+    soundWarmInFlight = false;
     recordError(error2);
   }
+};
+const scheduleSoundWarmMaintenance = () => {
+  if (process.platform !== "darwin") return;
+  if (soundWarmTimer) {
+    clearInterval(soundWarmTimer);
+    soundWarmTimer = null;
+  }
+  soundWarmTimer = setInterval(() => {
+    warmSoundPlayer();
+  }, SOUND_WARM_MAINTENANCE_INTERVAL_MS);
+  soundWarmTimer.unref();
 };
 const playSoundEffect = (kind) => {
   if (process.platform !== "darwin") return;
@@ -37679,15 +37809,22 @@ const updateTrayIcon = () => {
   }
 };
 const toggleMainWindow = () => {
-  if (!mainWindow) {
+  const win = getMainWindow();
+  if (!win) {
     createWindow();
     return;
   }
-  if (mainWindow.isVisible()) {
-    mainWindow.hide();
-  } else {
-    mainWindow.show();
-    mainWindow.focus();
+  try {
+    if (win.isVisible()) {
+      win.hide();
+    } else {
+      win.show();
+      win.focus();
+    }
+  } catch (error2) {
+    recordError(error2);
+    mainWindow = null;
+    hotkeyAttached = false;
   }
 };
 const createTray = () => {
@@ -37728,7 +37865,7 @@ const resolveHelpUrl = (sectionId) => {
     }
     recordError(new Error("Ignored SUSURRARE_HELP_URL because it is not an allowed URL."));
   }
-  const defaultHelpUrl = "https://susurrare.app/help.html";
+  const defaultHelpUrl = "https://susurrare.tech/help.html";
   if (!safeSectionId) return defaultHelpUrl;
   try {
     const url = new URL(defaultHelpUrl);
@@ -37768,11 +37905,17 @@ const wrapEnvelope = (payload) => ({
   payload
 });
 const sendRecordingStatus = (status, message) => {
-  if (!mainWindow) return;
-  mainWindow.webContents.send(
-    IpcChannels.recordingStatus,
-    wrapEnvelope({ status, timestamp: Date.now(), message })
-  );
+  const win = getMainWindow();
+  if (!win) return;
+  try {
+    if (win.webContents.isDestroyed()) return;
+    win.webContents.send(
+      IpcChannels.recordingStatus,
+      wrapEnvelope({ status, timestamp: Date.now(), message })
+    );
+  } catch (error2) {
+    recordError(error2);
+  }
 };
 const pause = (ms2) => new Promise((resolve2) => {
   setTimeout(resolve2, ms2);
@@ -37789,11 +37932,17 @@ const computeRms = (data) => {
   return totalSamples ? Math.sqrt(sum / totalSamples) : 0;
 };
 const sendHistoryUpdated = () => {
-  if (!mainWindow) return;
-  mainWindow.webContents.send(
-    IpcChannels.historyUpdated,
-    wrapEnvelope(history.map((item) => HistoryItemSchema.parse(item)))
-  );
+  const win = getMainWindow();
+  if (!win) return;
+  try {
+    if (win.webContents.isDestroyed()) return;
+    win.webContents.send(
+      IpcChannels.historyUpdated,
+      wrapEnvelope(history.map((item) => HistoryItemSchema.parse(item)))
+    );
+  } catch (error2) {
+    recordError(error2);
+  }
 };
 const normalizeShortcut = (shortcut) => {
   const tokens = shortcut.split("+").map((token) => token.trim()).filter(Boolean);
@@ -37857,6 +38006,11 @@ const startRecording = async () => {
       return;
     }
     playSoundEffect("start");
+    try {
+      recordingTargetAppName = await platformAdapter.app.activeName();
+    } catch {
+      recordingTargetAppName = null;
+    }
     if (overlayHideTimer) {
       clearTimeout(overlayHideTimer);
       overlayHideTimer = null;
@@ -38069,8 +38223,13 @@ const cycleActiveMode = async () => {
     } catch {
     }
   }
-  if (mainWindow && !mainWindow.isVisible()) {
-    mainWindow.show();
+  const win = getMainWindow();
+  if (win && !win.isVisible()) {
+    try {
+      win.show();
+    } catch (error2) {
+      recordError(error2);
+    }
   }
 };
 const attachLocalHotkeys = (win) => {
@@ -38081,11 +38240,7 @@ const attachLocalHotkeys = (win) => {
     if (input.type === "keyDown" || input.type === "keyUp") {
       if (input.type === "keyDown" && matchesShortcut(input, settings.toggleRecordingKey)) {
         event.preventDefault();
-        if (recordingActive) {
-          void stopRecording();
-        } else {
-          void startRecording();
-        }
+        triggerToggleRecording();
         return;
       }
       if (matchesShortcut(input, settings.pushToTalkKey)) {
@@ -38121,9 +38276,26 @@ const triggerToggleRecording = () => {
 const triggerPushToTalkGlobalFallback = () => {
   const firedAt = Date.now();
   setTimeout(() => {
-    if (mainWindow?.isFocused()) return;
-    if (lastPushToTalkSignalAt >= firedAt) return;
-    triggerToggleRecording();
+    try {
+      const win = getMainWindow();
+      let isFocused = false;
+      if (win) {
+        try {
+          isFocused = win.isFocused();
+        } catch {
+          isFocused = false;
+        }
+      }
+      if (isFocused) return;
+      if (lastPushToTalkSignalAt >= firedAt) return;
+      if (holdStartTimer) {
+        clearTimeout(holdStartTimer);
+        holdStartTimer = null;
+      }
+      triggerToggleRecording();
+    } catch (error2) {
+      recordError(error2);
+    }
   }, PUSH_TO_TALK_GLOBAL_FALLBACK_DELAY_MS);
 };
 const registerHotkeys = async () => {
@@ -38344,6 +38516,20 @@ const initSpeechSession = () => {
       if (behavior === "clipboard") {
         return { success: false, method: "clipboard" };
       }
+      if (recordingTargetAppName && !isSusurrareAppName(recordingTargetAppName)) {
+        let activeAppName = null;
+        try {
+          activeAppName = await platformAdapter.app.activeName();
+        } catch {
+          activeAppName = null;
+        }
+        if (isSusurrareAppName(activeAppName)) {
+          const restored = await activateAppByName(recordingTargetAppName);
+          if (restored) {
+            await pause(90);
+          }
+        }
+      }
       const shouldRestore = settings.restoreClipboardAfterPaste ?? false;
       let previousClipboard = null;
       if (shouldRestore) {
@@ -38353,7 +38539,22 @@ const initSpeechSession = () => {
           previousClipboard = null;
         }
       }
-      const result = await platformAdapter.insertText.atCursor(text);
+      let result = await platformAdapter.insertText.atCursor(text);
+      if (!result.success && recordingTargetAppName && !isSusurrareAppName(recordingTargetAppName)) {
+        let activeAppName = null;
+        try {
+          activeAppName = await platformAdapter.app.activeName();
+        } catch {
+          activeAppName = null;
+        }
+        if (!isSameAppName(activeAppName, recordingTargetAppName)) {
+          const restored = await activateAppByName(recordingTargetAppName);
+          if (restored) {
+            await pause(90);
+            result = await platformAdapter.insertText.atCursor(text);
+          }
+        }
+      }
       if (shouldRestore && result.success && result.method === "accessibility" && previousClipboard !== null) {
         try {
           await pause(160);
@@ -38381,32 +38582,38 @@ const initSpeechSession = () => {
     pipelineContext
   });
   speechSession.onEvent((event) => {
-    if (!mainWindow) return;
-    if (event.type === "partialTranscript") {
-      mainWindow.webContents.send(
-        IpcChannels.transcriptionEvent,
-        wrapEnvelope({ kind: "partial", text: event.text, timestamp: event.timestamp })
-      );
-      if (shouldShowOverlay() && recordingActive && event.text !== lastOverlayPartial) {
-        lastOverlayPartial = event.text;
-        platformAdapter.overlay.setText(event.text).catch(() => void 0);
+    const win = getMainWindow();
+    if (!win) return;
+    try {
+      if (win.webContents.isDestroyed()) return;
+      if (event.type === "partialTranscript") {
+        win.webContents.send(
+          IpcChannels.transcriptionEvent,
+          wrapEnvelope({ kind: "partial", text: event.text, timestamp: event.timestamp })
+        );
+        if (shouldShowOverlay() && recordingActive && event.text !== lastOverlayPartial) {
+          lastOverlayPartial = event.text;
+          platformAdapter.overlay.setText(event.text).catch(() => void 0);
+        }
       }
-    }
-    if (event.type === "finalTranscript") {
-      mainWindow.webContents.send(
-        IpcChannels.transcriptionEvent,
-        wrapEnvelope({ kind: "final", text: event.text, timestamp: Date.now() })
-      );
-      if (shouldShowOverlay()) {
-        lastOverlayPartial = "";
-        platformAdapter.overlay.setText("").catch(() => void 0);
+      if (event.type === "finalTranscript") {
+        win.webContents.send(
+          IpcChannels.transcriptionEvent,
+          wrapEnvelope({ kind: "final", text: event.text, timestamp: Date.now() })
+        );
+        if (shouldShowOverlay()) {
+          lastOverlayPartial = "";
+          platformAdapter.overlay.setText("").catch(() => void 0);
+        }
       }
-    }
-    if (event.type === "error" && event.code === "streaming_unavailable") {
-      if (shouldShowOverlay() && recordingActive && streamingEnabled) {
-        lastOverlayPartial = "Listening…";
-        platformAdapter.overlay.setText("Listening…").catch(() => void 0);
+      if (event.type === "error" && event.code === "streaming_unavailable") {
+        if (shouldShowOverlay() && recordingActive && streamingEnabled) {
+          lastOverlayPartial = "Listening…";
+          platformAdapter.overlay.setText("Listening…").catch(() => void 0);
+        }
       }
+    } catch (error2) {
+      recordError(error2);
     }
   });
 };
@@ -38726,7 +38933,12 @@ app.whenReady().then(async () => {
     persistState();
   }
   preloadSoundEffects();
-  warmSoundPlayer();
+  warmSoundPlayer({ force: true });
+  scheduleSoundWarmMaintenance();
+  if (process.platform === "darwin") {
+    powerMonitor.on("resume", () => warmSoundPlayer({ force: true }));
+    powerMonitor.on("unlock-screen", () => warmSoundPlayer({ force: true }));
+  }
   updatePipelineContext();
   initSpeechSession();
   applyThemeSource();

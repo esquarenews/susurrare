@@ -110,6 +110,22 @@ const stopHook = () => {
   hookStarted = false;
 };
 
+const pause = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const runOsaScript = (script: string) =>
+  new Promise<void>((resolve, reject) => {
+    execFile('/usr/bin/osascript', ['-e', script], (error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+  });
+
 const normalizeShortcut = (shortcut: string) => {
   const tokens = shortcut
     .split('+')
@@ -579,7 +595,7 @@ const ensureOverlayWindow = () => {
   });
   overlayWindow.webContents.on('did-finish-load', () => {
     overlayReady = true;
-    if (overlayWindow) {
+    if (overlayWindow && !overlayWindow.isDestroyed() && !overlayWindow.webContents.isDestroyed()) {
       overlayWindow.webContents
         .executeJavaScript(`window.__setOverlayState(${JSON.stringify(overlayState)})`)
         .catch(() => undefined);
@@ -599,41 +615,77 @@ const ensureOverlayWindow = () => {
 
 const updateOverlayState = async (state: 'recording' | 'processing' | 'done') => {
   overlayState = state;
-  if (!overlayWindow) return;
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  if (overlayWindow.webContents.isDestroyed()) return;
   if (!overlayReady) return;
-  await overlayWindow.webContents.executeJavaScript(
-    `window.__setOverlayState(${JSON.stringify(state)})`
-  );
+  try {
+    await overlayWindow.webContents.executeJavaScript(
+      `window.__setOverlayState(${JSON.stringify(state)})`
+    );
+  } catch {
+    return;
+  }
   if (state !== 'recording') {
-    await overlayWindow.webContents.executeJavaScript(`window.__setOverlayText('')`);
+    try {
+      await overlayWindow.webContents.executeJavaScript(`window.__setOverlayText('')`);
+    } catch {
+      // ignore overlay lifecycle races
+    }
   }
 };
 
 const updateOverlayWave = async (wave: number[]) => {
-  if (!overlayWindow || !overlayReady) return;
+  if (!overlayWindow || overlayWindow.isDestroyed() || !overlayReady) return;
+  if (overlayWindow.webContents.isDestroyed()) return;
   if (overlayState !== 'recording') return;
-  if (!overlayWindow.isVisible()) return;
+  try {
+    if (!overlayWindow.isVisible()) return;
+  } catch {
+    return;
+  }
   const now = Date.now();
   if (now - lastWaveSentAt < 20) return;
   lastWaveSentAt = now;
   const script = `window.__setOverlayWave(${JSON.stringify(wave)})`;
-  await overlayWindow.webContents.executeJavaScript(script);
+  try {
+    await overlayWindow.webContents.executeJavaScript(script);
+  } catch {
+    // ignore overlay lifecycle races
+  }
 };
 
 const updateOverlayText = async (text: string) => {
   overlayText = text;
-  if (!overlayWindow || !overlayReady) return;
-  if (!overlayWindow.isVisible()) return;
+  if (!overlayWindow || overlayWindow.isDestroyed() || !overlayReady) return;
+  if (overlayWindow.webContents.isDestroyed()) return;
+  try {
+    if (!overlayWindow.isVisible()) return;
+  } catch {
+    return;
+  }
   const script = `window.__setOverlayText(${JSON.stringify(text)})`;
-  await overlayWindow.webContents.executeJavaScript(script);
+  try {
+    await overlayWindow.webContents.executeJavaScript(script);
+  } catch {
+    // ignore overlay lifecycle races
+  }
 };
 
 const updateOverlayMode = async (text: string) => {
   overlayMode = text;
-  if (!overlayWindow || !overlayReady) return;
-  if (!overlayWindow.isVisible()) return;
+  if (!overlayWindow || overlayWindow.isDestroyed() || !overlayReady) return;
+  if (overlayWindow.webContents.isDestroyed()) return;
+  try {
+    if (!overlayWindow.isVisible()) return;
+  } catch {
+    return;
+  }
   const script = `window.__setOverlayMode(${JSON.stringify(text)})`;
-  await overlayWindow.webContents.executeJavaScript(script);
+  try {
+    await overlayWindow.webContents.executeJavaScript(script);
+  } catch {
+    // ignore overlay lifecycle races
+  }
 };
 
 const computeWaveform = (data: Uint8Array, bins = 32) => {
@@ -826,23 +878,18 @@ export const macosAdapter: PlatformAdapter = {
   insertText: {
     async atCursor(text: string) {
       clipboard.writeText(text);
+      const pasteScript = 'tell application "System Events" to keystroke "v" using {command down}';
       try {
-        await new Promise<void>((resolve, reject) => {
-          execFile(
-            '/usr/bin/osascript',
-            ['-e', 'tell application "System Events" to keystroke "v" using {command down}'],
-            (error) => {
-              if (error) {
-                reject(error);
-              } else {
-                resolve();
-              }
-            }
-          );
-        });
+        await runOsaScript(pasteScript);
         return { success: true, method: 'accessibility' };
       } catch {
-        return { success: false, method: 'clipboard' };
+        try {
+          await pause(70);
+          await runOsaScript(pasteScript);
+          return { success: true, method: 'accessibility' };
+        } catch {
+          return { success: false, method: 'clipboard' };
+        }
       }
     },
   },

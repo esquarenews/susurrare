@@ -10,6 +10,7 @@ export * from './transcription/client';
 export * from './telemetry/types';
 export * from './recording/stateMachine';
 export * from './recording/limits';
+export * from './recording/soundWarmPolicy';
 export * from './security/settings';
 export * from './speechToText/types';
 export * from './speechToText/session';

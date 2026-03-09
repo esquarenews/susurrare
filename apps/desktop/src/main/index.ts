@@ -10,9 +10,10 @@ import {
   globalShortcut,
   session,
   systemPreferences,
+  powerMonitor,
 } from 'electron';
 import type { Input } from 'electron';
-import { spawn } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { join } from 'path';
 import { existsSync, writeFileSync } from 'fs';
 import { autoUpdater } from 'electron-updater';
@@ -42,6 +43,7 @@ import {
   HistoryPinSchema,
   HistoryExportSchema,
   AppInfoSchema,
+  shouldWarmSoundPlayer,
 } from '@susurrare/core';
 import { platformAdapter } from './platform';
 import { loadState, saveState } from './store';
@@ -74,6 +76,11 @@ let silenceStopRequested = false;
 const SILENCE_RMS_THRESHOLD = 0.012;
 const RECORDING_LIMIT_WARNING_WINDOW_MS = 60_000;
 const RECORDING_LIMIT_MIN_WARNING_MS = 5_000;
+const SOUND_WARM_STALE_AFTER_MS = 1000 * 60 * 6;
+const SOUND_WARM_MIN_INTERVAL_MS = 800;
+const SOUND_WARM_MAINTENANCE_INTERVAL_MS = 1000 * 60 * 2;
+let soundWarmTimer: NodeJS.Timeout | null = null;
+let recordingTargetAppName: string | null = null;
 
 const shouldShowOverlay = () => settings.overlayStyle !== 'hide';
 
@@ -89,6 +96,32 @@ type JsonRecord = Record<string, unknown>;
 
 const isRecord = (value: unknown): value is JsonRecord =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const normalizeAppName = (value: string | null | undefined) => value?.trim().toLowerCase() ?? '';
+
+const isSusurrareAppName = (value: string | null | undefined) =>
+  normalizeAppName(value).includes('susurrare');
+
+const isSameAppName = (first: string | null | undefined, second: string | null | undefined) => {
+  const normalizedFirst = normalizeAppName(first);
+  const normalizedSecond = normalizeAppName(second);
+  return normalizedFirst.length > 0 && normalizedFirst === normalizedSecond;
+};
+
+const quoteAppleScriptString = (value: string) =>
+  value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
+const activateAppByName = async (name: string) => {
+  if (process.platform !== 'darwin') return false;
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  const script = `tell application "${quoteAppleScriptString(trimmed)}" to activate`;
+  return new Promise<boolean>((resolve) => {
+    execFile('/usr/bin/osascript', ['-e', script], (error) => {
+      resolve(!error);
+    });
+  });
+};
 
 const stripControlCharacters = (value: string) => {
   let output = '';
@@ -243,9 +276,25 @@ const isAllowedRendererNavigation = (url: string, devServerOrigin: string | null
   }
 };
 
+const getMainWindow = () => {
+  if (!mainWindow) return null;
+  try {
+    if (mainWindow.isDestroyed()) {
+      mainWindow = null;
+      hotkeyAttached = false;
+      return null;
+    }
+    return mainWindow;
+  } catch {
+    mainWindow = null;
+    hotkeyAttached = false;
+    return null;
+  }
+};
+
 const createWindow = () => {
   const devServerOrigin = resolveDevServerOrigin();
-  mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 980,
     height: 720,
     minWidth: 900,
@@ -266,19 +315,27 @@ const createWindow = () => {
       allowRunningInsecureContent: false,
     },
   });
+  mainWindow = win;
 
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  mainWindow.webContents.on('will-navigate', (event, url) => {
+  win.on('closed', () => {
+    if (mainWindow === win) {
+      mainWindow = null;
+    }
+    hotkeyAttached = false;
+  });
+
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (event, url) => {
     if (isAllowedRendererNavigation(url, devServerOrigin)) return;
     event.preventDefault();
   });
 
   if (process.env.VITE_DEV_SERVER_URL && isAllowedRendererNavigation(process.env.VITE_DEV_SERVER_URL, devServerOrigin)) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
+    win.loadFile(join(__dirname, '../renderer/index.html'));
   }
-  attachLocalHotkeys(mainWindow);
+  attachLocalHotkeys(win);
   sendRecordingStatus('idle');
 };
 
@@ -326,7 +383,8 @@ const getEffectiveTheme = (theme: 'light' | 'dark' | 'system') => {
 
 let startSoundPath: string | null = null;
 let endSoundPath: string | null = null;
-let soundPlayerWarmed = false;
+let lastSoundWarmAt = 0;
+let soundWarmInFlight = false;
 
 const resolveSoundPath = (fileName: string) => {
   const basePath = app.isPackaged ? process.resourcesPath : app.getAppPath();
@@ -344,21 +402,54 @@ const preloadSoundEffects = () => {
   endSoundPath ??= resolveSoundPath('end-recording.wav');
 };
 
-const warmSoundPlayer = () => {
+const warmSoundPlayer = (options: { force?: boolean } = {}) => {
   if (process.platform !== 'darwin') return;
-  if (soundPlayerWarmed) return;
-  soundPlayerWarmed = true;
   if (!startSoundPath || !endSoundPath) preloadSoundEffects();
   const warmPath = startSoundPath ?? endSoundPath;
   if (!warmPath) return;
+  const nowMs = Date.now();
+  if (
+    !shouldWarmSoundPlayer({
+      nowMs,
+      lastWarmAtMs: lastSoundWarmAt,
+      inFlight: soundWarmInFlight,
+      force: options.force,
+      minIntervalMs: SOUND_WARM_MIN_INTERVAL_MS,
+      staleAfterMs: SOUND_WARM_STALE_AFTER_MS,
+    })
+  ) {
+    return;
+  }
+  soundWarmInFlight = true;
+  lastSoundWarmAt = nowMs;
   try {
-    const child = spawn('/usr/bin/afplay', ['-v', '0', '-t', '0.01', warmPath], {
+    const child = spawn('/usr/bin/afplay', ['-v', '0', '-t', '0.02', warmPath], {
       stdio: 'ignore',
+    });
+    child.once('error', (error) => {
+      soundWarmInFlight = false;
+      recordError(error);
+    });
+    child.once('close', () => {
+      soundWarmInFlight = false;
     });
     child.unref();
   } catch (error) {
+    soundWarmInFlight = false;
     recordError(error);
   }
+};
+
+const scheduleSoundWarmMaintenance = () => {
+  if (process.platform !== 'darwin') return;
+  if (soundWarmTimer) {
+    clearInterval(soundWarmTimer);
+    soundWarmTimer = null;
+  }
+  soundWarmTimer = setInterval(() => {
+    warmSoundPlayer();
+  }, SOUND_WARM_MAINTENANCE_INTERVAL_MS);
+  soundWarmTimer.unref();
 };
 
 const playSoundEffect = (kind: 'start' | 'end') => {
@@ -411,15 +502,22 @@ const updateTrayIcon = () => {
 };
 
 const toggleMainWindow = () => {
-  if (!mainWindow) {
+  const win = getMainWindow();
+  if (!win) {
     createWindow();
     return;
   }
-  if (mainWindow.isVisible()) {
-    mainWindow.hide();
-  } else {
-    mainWindow.show();
-    mainWindow.focus();
+  try {
+    if (win.isVisible()) {
+      win.hide();
+    } else {
+      win.show();
+      win.focus();
+    }
+  } catch (error) {
+    recordError(error);
+    mainWindow = null;
+    hotkeyAttached = false;
   }
 };
 
@@ -463,7 +561,7 @@ const resolveHelpUrl = (sectionId?: string | null) => {
     }
     recordError(new Error('Ignored SUSURRARE_HELP_URL because it is not an allowed URL.'));
   }
-  const defaultHelpUrl = 'https://susurrare.app/help.html';
+  const defaultHelpUrl = 'https://susurrare.tech/help.html';
   if (!safeSectionId) return defaultHelpUrl;
   try {
     const url = new URL(defaultHelpUrl);
@@ -510,11 +608,17 @@ const sendRecordingStatus = (
   status: 'idle' | 'recording' | 'processing' | 'error',
   message?: string
 ) => {
-  if (!mainWindow) return;
-  mainWindow.webContents.send(
-    IpcChannels.recordingStatus,
-    wrapEnvelope({ status, timestamp: Date.now(), message })
-  );
+  const win = getMainWindow();
+  if (!win) return;
+  try {
+    if (win.webContents.isDestroyed()) return;
+    win.webContents.send(
+      IpcChannels.recordingStatus,
+      wrapEnvelope({ status, timestamp: Date.now(), message })
+    );
+  } catch (error) {
+    recordError(error);
+  }
 };
 
 const pause = (ms: number) => new Promise<void>((resolve) => {
@@ -534,11 +638,17 @@ const computeRms = (data: Uint8Array) => {
 };
 
 const sendHistoryUpdated = () => {
-  if (!mainWindow) return;
-  mainWindow.webContents.send(
-    IpcChannels.historyUpdated,
-    wrapEnvelope(history.map((item) => HistoryItemSchema.parse(item)))
-  );
+  const win = getMainWindow();
+  if (!win) return;
+  try {
+    if (win.webContents.isDestroyed()) return;
+    win.webContents.send(
+      IpcChannels.historyUpdated,
+      wrapEnvelope(history.map((item) => HistoryItemSchema.parse(item)))
+    );
+  } catch (error) {
+    recordError(error);
+  }
 };
 
 const normalizeShortcut = (shortcut: string) => {
@@ -610,6 +720,11 @@ const startRecording = async () => {
       return;
     }
     playSoundEffect('start');
+    try {
+      recordingTargetAppName = await platformAdapter.app.activeName();
+    } catch {
+      recordingTargetAppName = null;
+    }
     if (overlayHideTimer) {
       clearTimeout(overlayHideTimer);
       overlayHideTimer = null;
@@ -830,8 +945,13 @@ const cycleActiveMode = async () => {
       // ignore overlay errors
     }
   }
-  if (mainWindow && !mainWindow.isVisible()) {
-    mainWindow.show();
+  const win = getMainWindow();
+  if (win && !win.isVisible()) {
+    try {
+      win.show();
+    } catch (error) {
+      recordError(error);
+    }
   }
 };
 
@@ -843,11 +963,7 @@ const attachLocalHotkeys = (win: BrowserWindow) => {
     if (input.type === 'keyDown' || input.type === 'keyUp') {
       if (input.type === 'keyDown' && matchesShortcut(input, settings.toggleRecordingKey)) {
         event.preventDefault();
-        if (recordingActive) {
-          void stopRecording();
-        } else {
-          void startRecording();
-        }
+        triggerToggleRecording();
         return;
       }
       if (matchesShortcut(input, settings.pushToTalkKey)) {
@@ -886,9 +1002,26 @@ const triggerToggleRecording = () => {
 const triggerPushToTalkGlobalFallback = () => {
   const firedAt = Date.now();
   setTimeout(() => {
-    if (mainWindow?.isFocused()) return;
-    if (lastPushToTalkSignalAt >= firedAt) return;
-    triggerToggleRecording();
+    try {
+      const win = getMainWindow();
+      let isFocused = false;
+      if (win) {
+        try {
+          isFocused = win.isFocused();
+        } catch {
+          isFocused = false;
+        }
+      }
+      if (isFocused) return;
+      if (lastPushToTalkSignalAt >= firedAt) return;
+      if (holdStartTimer) {
+        clearTimeout(holdStartTimer);
+        holdStartTimer = null;
+      }
+      triggerToggleRecording();
+    } catch (error) {
+      recordError(error);
+    }
   }, PUSH_TO_TALK_GLOBAL_FALLBACK_DELAY_MS);
 };
 
@@ -1126,6 +1259,20 @@ const initSpeechSession = () => {
       if (behavior === 'clipboard') {
         return { success: false, method: 'clipboard' };
       }
+      if (recordingTargetAppName && !isSusurrareAppName(recordingTargetAppName)) {
+        let activeAppName: string | null = null;
+        try {
+          activeAppName = await platformAdapter.app.activeName();
+        } catch {
+          activeAppName = null;
+        }
+        if (isSusurrareAppName(activeAppName)) {
+          const restored = await activateAppByName(recordingTargetAppName);
+          if (restored) {
+            await pause(90);
+          }
+        }
+      }
       const shouldRestore = settings.restoreClipboardAfterPaste ?? false;
       let previousClipboard: string | null = null;
       if (shouldRestore) {
@@ -1135,7 +1282,22 @@ const initSpeechSession = () => {
           previousClipboard = null;
         }
       }
-      const result = await platformAdapter.insertText.atCursor(text);
+      let result = await platformAdapter.insertText.atCursor(text);
+      if (!result.success && recordingTargetAppName && !isSusurrareAppName(recordingTargetAppName)) {
+        let activeAppName: string | null = null;
+        try {
+          activeAppName = await platformAdapter.app.activeName();
+        } catch {
+          activeAppName = null;
+        }
+        if (!isSameAppName(activeAppName, recordingTargetAppName)) {
+          const restored = await activateAppByName(recordingTargetAppName);
+          if (restored) {
+            await pause(90);
+            result = await platformAdapter.insertText.atCursor(text);
+          }
+        }
+      }
       if (
         shouldRestore &&
         result.success &&
@@ -1169,33 +1331,39 @@ const initSpeechSession = () => {
     pipelineContext,
   });
   speechSession.onEvent((event) => {
-    if (!mainWindow) return;
-    if (event.type === 'partialTranscript') {
-      mainWindow.webContents.send(
-        IpcChannels.transcriptionEvent,
-        wrapEnvelope({ kind: 'partial', text: event.text, timestamp: event.timestamp })
-      );
-      if (shouldShowOverlay() && recordingActive && event.text !== lastOverlayPartial) {
-        lastOverlayPartial = event.text;
-        platformAdapter.overlay.setText(event.text).catch(() => undefined);
+    const win = getMainWindow();
+    if (!win) return;
+    try {
+      if (win.webContents.isDestroyed()) return;
+      if (event.type === 'partialTranscript') {
+        win.webContents.send(
+          IpcChannels.transcriptionEvent,
+          wrapEnvelope({ kind: 'partial', text: event.text, timestamp: event.timestamp })
+        );
+        if (shouldShowOverlay() && recordingActive && event.text !== lastOverlayPartial) {
+          lastOverlayPartial = event.text;
+          platformAdapter.overlay.setText(event.text).catch(() => undefined);
+        }
       }
-    }
-    if (event.type === 'finalTranscript') {
-      mainWindow.webContents.send(
-        IpcChannels.transcriptionEvent,
-        wrapEnvelope({ kind: 'final', text: event.text, timestamp: Date.now() })
-      );
-      if (shouldShowOverlay()) {
-        lastOverlayPartial = '';
-        platformAdapter.overlay.setText('').catch(() => undefined);
+      if (event.type === 'finalTranscript') {
+        win.webContents.send(
+          IpcChannels.transcriptionEvent,
+          wrapEnvelope({ kind: 'final', text: event.text, timestamp: Date.now() })
+        );
+        if (shouldShowOverlay()) {
+          lastOverlayPartial = '';
+          platformAdapter.overlay.setText('').catch(() => undefined);
+        }
       }
-    }
-    if (event.type === 'error' && event.code === 'streaming_unavailable') {
-      if (shouldShowOverlay() && recordingActive && streamingEnabled) {
-        // Keep recording flow stable and silently rely on HTTP finalization fallback.
-        lastOverlayPartial = 'Listening…';
-        platformAdapter.overlay.setText('Listening…').catch(() => undefined);
+      if (event.type === 'error' && event.code === 'streaming_unavailable') {
+        if (shouldShowOverlay() && recordingActive && streamingEnabled) {
+          // Keep recording flow stable and silently rely on HTTP finalization fallback.
+          lastOverlayPartial = 'Listening…';
+          platformAdapter.overlay.setText('Listening…').catch(() => undefined);
+        }
       }
+    } catch (error) {
+      recordError(error);
     }
   });
 };
@@ -1551,7 +1719,12 @@ app.whenReady().then(async () => {
     persistState();
   }
   preloadSoundEffects();
-  warmSoundPlayer();
+  warmSoundPlayer({ force: true });
+  scheduleSoundWarmMaintenance();
+  if (process.platform === 'darwin') {
+    powerMonitor.on('resume', () => warmSoundPlayer({ force: true }));
+    powerMonitor.on('unlock-screen', () => warmSoundPlayer({ force: true }));
+  }
   updatePipelineContext();
   initSpeechSession();
   applyThemeSource();

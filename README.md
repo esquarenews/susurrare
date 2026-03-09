@@ -10,7 +10,7 @@ Cross-platform push-to-talk dictation (Electron + shared core). Built for macOS 
 ## Configuration
 - Set your OpenAI key in **Configuration → OpenAI API key**, or via `OPENAI_API_KEY`.
 - Optional base URL for mock servers: `OPENAI_BASE_URL`.
-- Help button opens this README in your browser (or `SUSURRARE_HELP_URL` if set).
+- Help button opens the help wiki (or `SUSURRARE_HELP_URL` if set).
 
 ## Default hotkeys (remappable in Configuration)
 - Push-to-talk (hold): `F15`
