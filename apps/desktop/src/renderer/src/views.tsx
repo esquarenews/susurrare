@@ -347,7 +347,11 @@ const shortcutDraftsFromSettings = (value: Settings): ShortcutDrafts => ({
   toggleRecordingKey: value.toggleRecordingKey,
 });
 
-const SettingsConfigView: React.FC = () => {
+type SettingsTargetSection = 'keyboard-shortcuts';
+
+const SettingsConfigView: React.FC<{ targetSection?: SettingsTargetSection | null }> = ({
+  targetSection,
+}) => {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [status, setStatus] = useState<StatusState>({ text: null, nonce: 0 });
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -373,6 +377,7 @@ const SettingsConfigView: React.FC = () => {
     pushToTalkKey: null,
     toggleRecordingKey: null,
   });
+  const keyboardShortcutsRef = useRef<HTMLDivElement | null>(null);
 
   const refreshPermissions = async () => {
     try {
@@ -402,6 +407,11 @@ const SettingsConfigView: React.FC = () => {
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, []);
+
+  useEffect(() => {
+    if (targetSection !== 'keyboard-shortcuts') return;
+    keyboardShortcutsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [targetSection]);
 
   const permissionNotices = useMemo(
     () => buildPermissionNotices(permissions),
@@ -595,7 +605,7 @@ const SettingsConfigView: React.FC = () => {
           </label>
         </div>
       </div>
-      <div className="card">
+      <div className="card" ref={keyboardShortcutsRef}>
         <h3>Keyboard shortcuts</h3>
         {shortcutFieldMeta.map((field) => (
           <div key={field.key} className="shortcut-row shortcut-config-row">
@@ -1150,7 +1160,10 @@ const createThinkingDots = (count: number) => {
 export const HomeView: React.FC<{
   stats: HomeStats;
   historyItems: HistoryItem[];
-  onNavigate: (view: 'shortcuts' | 'modes' | 'vocabulary') => void;
+  onNavigate: (target: {
+    view: 'configuration' | 'modes' | 'vocabulary';
+    section?: SettingsTargetSection;
+  }) => void;
 }> = ({ stats, historyItems, onNavigate }) => {
   const [showTrends, setShowTrends] = useState(false);
   const [statsMode, setStatsMode] = useState<StatsMode>('rolling');
@@ -1373,7 +1386,10 @@ export const HomeView: React.FC<{
               <h3>Customize shortcuts</h3>
               <p>Set your push-to-talk and cancel keys.</p>
             </div>
-            <button className="chip" onClick={() => onNavigate('shortcuts')}>
+            <button
+              className="chip"
+              onClick={() => onNavigate({ view: 'configuration', section: 'keyboard-shortcuts' })}
+            >
               Take me there
             </button>
           </div>
@@ -1382,7 +1398,7 @@ export const HomeView: React.FC<{
               <h3>Create a mode</h3>
               <p>Tailor profiles for meetings, writing, or coding.</p>
             </div>
-            <button className="chip" onClick={() => onNavigate('modes')}>
+            <button className="chip" onClick={() => onNavigate({ view: 'modes' })}>
               Take me there
             </button>
           </div>
@@ -1391,7 +1407,7 @@ export const HomeView: React.FC<{
               <h3>Add vocabulary</h3>
               <p>Teach Susurrare names, acronyms, and jargon.</p>
             </div>
-            <button className="chip" onClick={() => onNavigate('vocabulary')}>
+            <button className="chip" onClick={() => onNavigate({ view: 'vocabulary' })}>
               Take me there
             </button>
           </div>
@@ -2316,8 +2332,10 @@ export const ShortcutsView: React.FC = () => {
   );
 };
 
-export const SettingsView: React.FC = () => (
-  <SettingsConfigView />
+export const SettingsView: React.FC<{ targetSection?: SettingsTargetSection | null }> = ({
+  targetSection,
+}) => (
+  <SettingsConfigView targetSection={targetSection} />
 );
 
 export const SoundView: React.FC = () => (

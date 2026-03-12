@@ -11043,7 +11043,9 @@ const shortcutDraftsFromSettings = (value) => ({
   pushToTalkKey: value.pushToTalkKey,
   toggleRecordingKey: value.toggleRecordingKey
 });
-const SettingsConfigView = () => {
+const SettingsConfigView = ({
+  targetSection
+}) => {
   const [settings, setSettings] = reactExports.useState(null);
   const [status, setStatus] = reactExports.useState({ text: null, nonce: 0 });
   const [apiKeyInput, setApiKeyInput] = reactExports.useState("");
@@ -11069,6 +11071,7 @@ const SettingsConfigView = () => {
     pushToTalkKey: null,
     toggleRecordingKey: null
   });
+  const keyboardShortcutsRef = reactExports.useRef(null);
   const refreshPermissions = async () => {
     try {
       const [nextPermissions, guidance] = await Promise.all([
@@ -11093,6 +11096,10 @@ const SettingsConfigView = () => {
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
   }, []);
+  reactExports.useEffect(() => {
+    if (targetSection !== "keyboard-shortcuts") return;
+    keyboardShortcutsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [targetSection]);
   const permissionNotices = reactExports.useMemo(
     () => buildPermissionNotices(permissions),
     [permissions]
@@ -11276,7 +11283,7 @@ const SettingsConfigView = () => {
         ] })
       ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card", ref: keyboardShortcutsRef, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Keyboard shortcuts" }),
       shortcutFieldMeta.map((field) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shortcut-row shortcut-config-row", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
@@ -11939,21 +11946,28 @@ const HomeView = ({ stats, historyItems, onNavigate }) => {
             /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Customize shortcuts" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Set your push-to-talk and cancel keys." })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chip", onClick: () => onNavigate("shortcuts"), children: "Take me there" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              className: "chip",
+              onClick: () => onNavigate({ view: "configuration", section: "keyboard-shortcuts" }),
+              children: "Take me there"
+            }
+          )
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "action-card action-card-nav", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "action-card-copy", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Create a mode" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Tailor profiles for meetings, writing, or coding." })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chip", onClick: () => onNavigate("modes"), children: "Take me there" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chip", onClick: () => onNavigate({ view: "modes" }), children: "Take me there" })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "action-card action-card-nav", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "action-card-copy", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Add vocabulary" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Teach Susurrare names, acronyms, and jargon." })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chip", onClick: () => onNavigate("vocabulary"), children: "Take me there" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chip", onClick: () => onNavigate({ view: "vocabulary" }), children: "Take me there" })
         ] })
       ] })
     ] }),
@@ -12787,7 +12801,9 @@ const ShortcutsView = () => {
     ] })
   ] });
 };
-const SettingsView = () => /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsConfigView, {});
+const SettingsView = ({
+  targetSection
+}) => /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsConfigView, { targetSection });
 const SoundView = () => /* @__PURE__ */ jsxRuntimeExports.jsx(SoundConfigView, {});
 const ModelsView = () => /* @__PURE__ */ jsxRuntimeExports.jsx(ModelsLibraryView, {});
 const HistoryView = () => {
@@ -13273,6 +13289,9 @@ const FloatingStatusBanner = ({ banner }) => {
 };
 const App = () => {
   const [active, setActive] = reactExports.useState("home");
+  const [settingsTargetSection, setSettingsTargetSection] = reactExports.useState(
+    null
+  );
   const [recordingStatus, setRecordingStatus] = reactExports.useState("idle");
   const [recordingBanner, setRecordingBanner] = reactExports.useState({
     text: null,
@@ -13333,6 +13352,16 @@ const App = () => {
     });
     return () => unsubscribe();
   }, []);
+  const handleNavSelect = (next) => {
+    setActive(next);
+    setSettingsTargetSection(null);
+  };
+  const handleHomeNavigate = (target) => {
+    setActive(target.view);
+    setSettingsTargetSection(
+      target.view === "configuration" ? target.section ?? null : null
+    );
+  };
   const content = reactExports.useMemo(() => {
     switch (active) {
       case "modes":
@@ -13342,7 +13371,7 @@ const App = () => {
       case "shortcuts":
         return /* @__PURE__ */ jsxRuntimeExports.jsx(ShortcutsView, {});
       case "configuration":
-        return /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsView, {});
+        return /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsView, { targetSection: settingsTargetSection });
       case "sound":
         return /* @__PURE__ */ jsxRuntimeExports.jsx(SoundView, {});
       case "models":
@@ -13357,13 +13386,13 @@ const App = () => {
           {
             stats: homeStats,
             historyItems,
-            onNavigate: setActive
+            onNavigate: handleHomeNavigate
           }
         );
     }
-  }, [active, homeStats, historyItems]);
+  }, [active, handleHomeNavigate, historyItems, homeStats, settingsTargetSection]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "app-shell", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Sidebar, { items: NAV_ITEMS, active, onSelect: setActive }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Sidebar, { items: NAV_ITEMS, active, onSelect: handleNavSelect }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "app-main", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "top-bar", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "top-title", children: [

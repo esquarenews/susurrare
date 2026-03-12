@@ -123,6 +123,9 @@ const FloatingStatusBanner: React.FC<{ banner: RecordingBannerState }> = ({ bann
 
 export const App: React.FC = () => {
   const [active, setActive] = useState<NavId>('home');
+  const [settingsTargetSection, setSettingsTargetSection] = useState<'keyboard-shortcuts' | null>(
+    null
+  );
   const [recordingStatus, setRecordingStatus] = useState<
     'idle' | 'recording' | 'processing' | 'error'
   >('idle');
@@ -200,6 +203,21 @@ export const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  const handleNavSelect = (next: NavId) => {
+    setActive(next);
+    setSettingsTargetSection(null);
+  };
+
+  const handleHomeNavigate = (target: {
+    view: 'configuration' | 'modes' | 'vocabulary';
+    section?: 'keyboard-shortcuts';
+  }) => {
+    setActive(target.view);
+    setSettingsTargetSection(
+      target.view === 'configuration' ? target.section ?? null : null
+    );
+  };
+
   const content = useMemo(() => {
     switch (active) {
       case 'modes':
@@ -209,7 +227,7 @@ export const App: React.FC = () => {
       case 'shortcuts':
         return <ShortcutsView />;
       case 'configuration':
-        return <SettingsView />;
+        return <SettingsView targetSection={settingsTargetSection} />;
       case 'sound':
         return <SoundView />;
       case 'models':
@@ -223,15 +241,15 @@ export const App: React.FC = () => {
           <HomeView
             stats={homeStats}
             historyItems={historyItems}
-            onNavigate={setActive}
+            onNavigate={handleHomeNavigate}
           />
         );
     }
-  }, [active, homeStats, historyItems]);
+  }, [active, handleHomeNavigate, historyItems, homeStats, settingsTargetSection]);
 
   return (
     <div className="app-shell">
-      <Sidebar items={NAV_ITEMS} active={active} onSelect={setActive} />
+      <Sidebar items={NAV_ITEMS} active={active} onSelect={handleNavSelect} />
       <main className="app-main">
         <header className="top-bar">
           <div className="top-title">
