@@ -22943,7 +22943,7 @@ const macosAdapter = {
       };
     },
     async requestGuidance() {
-      return "Open System Settings > Privacy & Security to grant microphone and accessibility access. For development builds, grant access to Electron. Microphone permission is requested when you start recording.";
+      return "Open System Settings > Privacy & Security to grant microphone and accessibility access. For development builds, grant access to Electron. If text is copied but not pasted, also allow Electron to control System Events under Automation. Microphone permission is requested when you start recording.";
     }
   }
 };
@@ -37497,17 +37497,34 @@ const sanitizeMaybeString = (value, maxLength, trim = false) => {
 };
 const sanitizeSettingsPayload = (payload) => {
   if (!isRecord(payload)) return {};
-  const sanitizedApiKey = sanitizeMaybeString(payload.openAiApiKey, 512, true);
-  return {
-    ...payload,
-    activeModeId: sanitizeMaybeString(payload.activeModeId, 128, true),
-    pushToTalkKey: sanitizeMaybeString(payload.pushToTalkKey, 64, true),
-    toggleRecordingKey: sanitizeMaybeString(payload.toggleRecordingKey, 64, true),
-    cancelKey: sanitizeMaybeString(payload.cancelKey, 64, true),
-    changeModeShortcut: sanitizeMaybeString(payload.changeModeShortcut, 64, true),
-    transcriptionLanguage: sanitizeMaybeString(payload.transcriptionLanguage, 24, true),
-    openAiApiKey: sanitizedApiKey === "" ? void 0 : sanitizedApiKey
-  };
+  const sanitized = { ...payload };
+  if (Object.prototype.hasOwnProperty.call(payload, "activeModeId")) {
+    sanitized.activeModeId = sanitizeMaybeString(payload.activeModeId, 128, true);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "pushToTalkKey")) {
+    sanitized.pushToTalkKey = sanitizeMaybeString(payload.pushToTalkKey, 64, true);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "toggleRecordingKey")) {
+    sanitized.toggleRecordingKey = sanitizeMaybeString(payload.toggleRecordingKey, 64, true);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "cancelKey")) {
+    sanitized.cancelKey = sanitizeMaybeString(payload.cancelKey, 64, true);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "changeModeShortcut")) {
+    sanitized.changeModeShortcut = sanitizeMaybeString(payload.changeModeShortcut, 64, true);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "transcriptionLanguage")) {
+    sanitized.transcriptionLanguage = sanitizeMaybeString(
+      payload.transcriptionLanguage,
+      24,
+      true
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "openAiApiKey")) {
+    const sanitizedApiKey = sanitizeMaybeString(payload.openAiApiKey, 512, true);
+    sanitized.openAiApiKey = sanitizedApiKey === "" ? void 0 : sanitizedApiKey;
+  }
+  return sanitized;
 };
 const sanitizeModePayload = (payload) => {
   if (!isRecord(payload)) return {};
@@ -38561,6 +38578,12 @@ const initSpeechSession = () => {
           await platformAdapter.clipboard.set(previousClipboard);
         } catch {
         }
+      }
+      if (!result.success && result.method === "clipboard") {
+        sendRecordingStatus(
+          "error",
+          "Could not paste into the target app. Text was copied to the clipboard. Grant Accessibility and Automation access to Electron and allow control of System Events."
+        );
       }
       return result;
     },

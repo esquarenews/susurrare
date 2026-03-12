@@ -326,7 +326,7 @@ const buildPermissionNotices = (permissions: PermissionStatus | null): Permissio
       id: 'accessibility',
       title: 'Global hold-to-talk is unavailable',
       body:
-        'Grant Accessibility and Input Monitoring access to Electron to enable low-level push-to-talk detection. Toggle, cancel, and mode shortcuts may still work.',
+        'Grant Accessibility and Input Monitoring access to Electron to enable low-level push-to-talk detection. If text is copied but not pasted, also allow Electron to control System Events under Automation.',
     });
   }
   if (permissions.microphone !== 'granted') {

@@ -144,17 +144,36 @@ const sanitizeMaybeString = (value: unknown, maxLength: number, trim = false) =>
 
 const sanitizeSettingsPayload = (payload: unknown): JsonRecord => {
   if (!isRecord(payload)) return {};
-  const sanitizedApiKey = sanitizeMaybeString(payload.openAiApiKey, 512, true);
-  return {
-    ...payload,
-    activeModeId: sanitizeMaybeString(payload.activeModeId, 128, true),
-    pushToTalkKey: sanitizeMaybeString(payload.pushToTalkKey, 64, true),
-    toggleRecordingKey: sanitizeMaybeString(payload.toggleRecordingKey, 64, true),
-    cancelKey: sanitizeMaybeString(payload.cancelKey, 64, true),
-    changeModeShortcut: sanitizeMaybeString(payload.changeModeShortcut, 64, true),
-    transcriptionLanguage: sanitizeMaybeString(payload.transcriptionLanguage, 24, true),
-    openAiApiKey: sanitizedApiKey === '' ? undefined : sanitizedApiKey,
-  };
+  const sanitized: JsonRecord = { ...payload };
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'activeModeId')) {
+    sanitized.activeModeId = sanitizeMaybeString(payload.activeModeId, 128, true);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'pushToTalkKey')) {
+    sanitized.pushToTalkKey = sanitizeMaybeString(payload.pushToTalkKey, 64, true);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'toggleRecordingKey')) {
+    sanitized.toggleRecordingKey = sanitizeMaybeString(payload.toggleRecordingKey, 64, true);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'cancelKey')) {
+    sanitized.cancelKey = sanitizeMaybeString(payload.cancelKey, 64, true);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'changeModeShortcut')) {
+    sanitized.changeModeShortcut = sanitizeMaybeString(payload.changeModeShortcut, 64, true);
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'transcriptionLanguage')) {
+    sanitized.transcriptionLanguage = sanitizeMaybeString(
+      payload.transcriptionLanguage,
+      24,
+      true
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'openAiApiKey')) {
+    const sanitizedApiKey = sanitizeMaybeString(payload.openAiApiKey, 512, true);
+    sanitized.openAiApiKey = sanitizedApiKey === '' ? undefined : sanitizedApiKey;
+  }
+
+  return sanitized;
 };
 
 const sanitizeModePayload = (payload: unknown): JsonRecord => {
@@ -1310,6 +1329,12 @@ const initSpeechSession = () => {
         } catch {
           // ignore clipboard restore failures
         }
+      }
+      if (!result.success && result.method === 'clipboard') {
+        sendRecordingStatus(
+          'error',
+          'Could not paste into the target app. Text was copied to the clipboard. Grant Accessibility and Automation access to Electron and allow control of System Events.'
+        );
       }
       return result;
     },

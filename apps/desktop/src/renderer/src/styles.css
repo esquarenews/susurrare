@@ -1913,6 +1913,14 @@ input {
   border-color: #8a74f0;
 }
 
+.status-banner.is-error {
+  border-color: color-mix(in srgb, var(--recording) 55%, var(--border));
+}
+
+.status-banner.is-error::before {
+  background: linear-gradient(90deg, rgba(226, 85, 85, 0.2) 0%, rgba(255, 255, 255, 0) 70%);
+}
+
 .status-banner.is-empty {
   visibility: hidden;
 }
@@ -1928,6 +1936,10 @@ input {
 
 :root[data-theme='dark'] .status-banner::before {
   background: linear-gradient(90deg, rgba(138, 123, 255, 0.3) 0%, rgba(26, 20, 40, 0) 70%);
+}
+
+:root[data-theme='dark'] .status-banner.is-error::before {
+  background: linear-gradient(90deg, rgba(240, 107, 107, 0.24) 0%, rgba(26, 20, 40, 0) 70%);
 }
 
 @keyframes bannerGradientFade {

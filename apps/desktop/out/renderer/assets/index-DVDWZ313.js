@@ -11025,7 +11025,7 @@ const buildPermissionNotices = (permissions) => {
     notices.push({
       id: "accessibility",
       title: "Global hold-to-talk is unavailable",
-      body: "Grant Accessibility and Input Monitoring access to Electron to enable low-level push-to-talk detection. Toggle, cancel, and mode shortcuts may still work."
+      body: "Grant Accessibility and Input Monitoring access to Electron to enable low-level push-to-talk detection. If text is copied but not pasted, also allow Electron to control System Events under Automation."
     });
   }
   if (permissions.microphone !== "granted") {
@@ -11756,10 +11756,29 @@ const HomeView = ({
 }) => {
   const [showTrends, setShowTrends] = reactExports.useState(false);
   const [statsMode, setStatsMode] = reactExports.useState("rolling");
+  const [homeShortcuts, setHomeShortcuts] = reactExports.useState(null);
   const series = reactExports.useMemo(() => buildSeries(historyItems, statsMode), [historyItems, statsMode]);
   const thinkingDots = reactExports.useMemo(() => createThinkingDots(26), []);
   const [summaryState, setSummaryState] = reactExports.useState({ text: "Generating summary…", source: "loading" });
   const summaryKeyRef = reactExports.useRef("");
+  reactExports.useEffect(() => {
+    let cancelled = false;
+    const loadShortcuts = () => {
+      window.susurrare.settings.get().then((settings) => {
+        if (cancelled) return;
+        setHomeShortcuts({
+          pushToTalkKey: settings.pushToTalkKey,
+          toggleRecordingKey: settings.toggleRecordingKey
+        });
+      }).catch(() => void 0);
+    };
+    loadShortcuts();
+    window.addEventListener("focus", loadShortcuts);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", loadShortcuts);
+    };
+  }, []);
   reactExports.useEffect(() => {
     if (!showTrends) {
       summaryKeyRef.current = "";
@@ -11910,7 +11929,13 @@ const HomeView = ({
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "action-list", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Start recording" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Hold F15 to dictate, release to paste." })
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
+            "Hold ",
+            homeShortcuts?.pushToTalkKey ?? "F15",
+            " to dictate and release to paste, or press ",
+            homeShortcuts?.toggleRecordingKey ?? "F14",
+            " to start and stop recording."
+          ] })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Customize shortcuts" }),
@@ -13216,9 +13241,38 @@ const getMissingPermissionCount = (permissions) => {
   if (permissions.microphone !== "granted") count += 1;
   return count;
 };
+const FloatingStatusBanner = ({ banner }) => {
+  const message = banner.text;
+  const [visible, setVisible] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    if (!message) {
+      setVisible(false);
+      return;
+    }
+    setVisible(true);
+    const timer = setTimeout(() => {
+      setVisible(false);
+    }, 6e3);
+    return () => clearTimeout(timer);
+  }, [message, banner.nonce]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "status-banner-slot", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: `status-banner${message ? "" : " is-empty"}${visible ? "" : " is-hidden"}${banner.tone === "error" ? " is-error" : ""}`,
+      "aria-hidden": !message,
+      children: message ?? " "
+    },
+    `${message ?? "empty"}-${banner.nonce}`
+  ) });
+};
 const App = () => {
   const [active, setActive] = reactExports.useState("home");
   const [recordingStatus, setRecordingStatus] = reactExports.useState("idle");
+  const [recordingBanner, setRecordingBanner] = reactExports.useState({
+    text: null,
+    nonce: 0,
+    tone: "neutral"
+  });
   const [permissions, setPermissions] = reactExports.useState(null);
   const [historyItems, setHistoryItems] = reactExports.useState([]);
   const homeStats = reactExports.useMemo(() => computeHomeStats(historyItems), [historyItems]);
@@ -13241,6 +13295,11 @@ const App = () => {
   reactExports.useEffect(() => {
     const unsubscribe = window.susurrare.onRecordingStatus((event) => {
       setRecordingStatus(event.status);
+      setRecordingBanner({
+        text: event.message ?? null,
+        nonce: event.timestamp,
+        tone: event.status === "error" ? "error" : "neutral"
+      });
     });
     return () => unsubscribe();
   }, []);
@@ -13312,7 +13371,8 @@ const App = () => {
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "icon-button", "aria-label": "Profile", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "avatar", children: "ER" }) })
         ] })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("section", { className: "content", children: content })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("section", { className: "content", children: content }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(FloatingStatusBanner, { banner: recordingBanner })
     ] })
   ] });
 };

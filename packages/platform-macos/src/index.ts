@@ -972,7 +972,7 @@ export const macosAdapter: PlatformAdapter = {
       };
     },
     async requestGuidance() {
-      return 'Open System Settings > Privacy & Security to grant microphone and accessibility access. For development builds, grant access to Electron. Microphone permission is requested when you start recording.';
+      return 'Open System Settings > Privacy & Security to grant microphone and accessibility access. For development builds, grant access to Electron. If text is copied but not pasted, also allow Electron to control System Events under Automation. Microphone permission is requested when you start recording.';
     },
   },
 };
