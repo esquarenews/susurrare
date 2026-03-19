@@ -3,5 +3,5 @@
   "compilerOptions": {
     "composite": true
   },
-  "include": ["src", "vitest.config.ts", "../platform-windows/src"]
+  "include": ["src", "vitest.config.ts", "../platform/src", "../platform-windows/src"]
 }

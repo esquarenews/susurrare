@@ -28,6 +28,18 @@ export interface SpeechToTextDependencies {
 }
 
 type SessionState = 'idle' | 'recording' | 'finalizing' | 'completed' | 'cancelled' | 'error';
+type StreamingHandle = Awaited<ReturnType<NonNullable<TranscriptionClient['openStream']>>>;
+type StreamingSegmentState = {
+  handle: StreamingHandle | null;
+  startedAudioDurationMs: number;
+  durationMs: number;
+  partialText: string;
+  finalText: string;
+  diarizedSegments: DiarizedSegment[] | null;
+  committed: boolean;
+};
+
+const STREAMING_SEGMENT_ROTATION_MS = 8 * 60 * 1000;
 
 const concatChunks = (chunks: Uint8Array[]) => {
   const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
@@ -44,6 +56,40 @@ const countWords = (text: string) => {
   const trimmed = text.trim();
   if (!trimmed) return 0;
   return trimmed.split(/\s+/).filter(Boolean).length;
+};
+
+const mergeTranscript = (existing: string | null, next: string | null | undefined) => {
+  const trimmedNext = next?.trim();
+  if (!trimmedNext) return existing;
+  if (!existing) return trimmedNext;
+  if (trimmedNext.startsWith(existing)) return trimmedNext;
+  if (existing.startsWith(trimmedNext)) return existing;
+  return `${existing} ${trimmedNext}`.trim();
+};
+
+const appendSegmentsWithOffset = (
+  all: DiarizedSegment[],
+  segments: DiarizedSegment[] | null,
+  timeOffsetSeconds: number
+) => {
+  if (!segments?.length) return;
+  segments.forEach((segment) => {
+    all.push({
+      ...segment,
+      start: segment.start + timeOffsetSeconds,
+      end: segment.end + timeOffsetSeconds,
+    });
+  });
+};
+
+const estimateChunkDurationMs = (chunk: AudioChunk, sampleRate?: number) => {
+  if (typeof chunk.durationMs === 'number' && Number.isFinite(chunk.durationMs)) {
+    return chunk.durationMs;
+  }
+  if (!sampleRate || !Number.isFinite(sampleRate) || sampleRate <= 0) {
+    return 0;
+  }
+  return Math.round((chunk.data.length / (sampleRate * 2)) * 1000);
 };
 
 const formatSpeakerLabel = (speaker: string | undefined, index: number) => {
@@ -114,10 +160,12 @@ export const createSpeechToTextSession = (
   let streamingText: string | null = null;
   let diarizedSegments: DiarizedSegment[] | null = null;
   let rawTranscriptText: string | null = null;
-  let streamingHandle: Awaited<ReturnType<NonNullable<TranscriptionClient['openStream']>>> | null =
-    null;
+  let activeStreamingSegment: StreamingSegmentState | null = null;
   let streamingFailed = false;
   let streamingReady: Promise<void> | null = null;
+  let streamingRotation: Promise<void> | null = null;
+  let committedStreamingText: string | null = null;
+  let committedStreamingSegments: DiarizedSegment[] = [];
   let pendingChunks: Uint8Array[] = [];
   const bufferedChunks: Uint8Array[] = [];
   const listeners = new Set<(event: SpeechToTextEvent) => void>();
@@ -137,41 +185,96 @@ export const createSpeechToTextSession = (
     streamingText = null;
     diarizedSegments = null;
     rawTranscriptText = null;
-    streamingHandle = null;
+    activeStreamingSegment = null;
     streamingFailed = false;
     streamingReady = null;
+    streamingRotation = null;
+    committedStreamingText = null;
+    committedStreamingSegments = [];
     pendingChunks = [];
     bufferedChunks.length = 0;
   };
 
-  const startStreaming = async (request: Parameters<NonNullable<TranscriptionClient['openStream']>>[0]) => {
+  const buildRequest = (audio: Uint8Array) =>
+    config
+      ? {
+          audio,
+          model: config.model,
+          language: config.language,
+          silenceRemoval: config.silenceRemoval,
+          maxLatencyHintMs: config.maxLatencyHintMs,
+          sampleRate: config.sampleRate,
+        }
+      : {
+          audio,
+          model: { selection: 'fast' as const },
+        };
+
+  const createStreamingSegment = (startedAudioDurationMs: number): StreamingSegmentState => ({
+    handle: null,
+    startedAudioDurationMs,
+    durationMs: 0,
+    partialText: '',
+    finalText: '',
+    diarizedSegments: null,
+    committed: false,
+  });
+
+  const emitStreamingUnavailable = (error: unknown) => {
+    emit({
+      type: 'error',
+      code: 'streaming_unavailable',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  };
+
+  const commitStreamingSegment = (segment: StreamingSegmentState | null) => {
+    if (!segment || segment.committed) return;
+    segment.committed = true;
+    const bestText = segment.finalText.trim() || segment.partialText.trim();
+    committedStreamingText = mergeTranscript(committedStreamingText, bestText);
+    finalText = committedStreamingText;
+    if (segment.diarizedSegments?.length) {
+      appendSegmentsWithOffset(
+        committedStreamingSegments,
+        segment.diarizedSegments,
+        segment.startedAudioDurationMs / 1000
+      );
+      diarizedSegments = committedStreamingSegments.length ? [...committedStreamingSegments] : null;
+    }
+    if (activeStreamingSegment === segment) {
+      streamingText = null;
+    }
+  };
+
+  const startStreamingSegment = async (segment: StreamingSegmentState) => {
     if (!deps.transcription.openStream) {
       streamingFailed = true;
       return;
     }
-    streamingReady = deps.transcription
-      .openStream(request, (event: TranscriptionEvent) => {
+    const ready = deps.transcription
+      .openStream(buildRequest(new Uint8Array()), (event: TranscriptionEvent) => {
         try {
           const parsed = TranscriptionEventSchema.parse(event);
           if (parsed.kind === 'partial') {
-            streamingText = parsed.text;
-            emit({
-              type: 'partialTranscript',
-              text: parsed.text,
-              confidence: parsed.confidence,
-              timestamp: parsed.timestamp,
-            });
+            segment.partialText = parsed.text;
+            if (activeStreamingSegment === segment) {
+              streamingText = parsed.text;
+              emit({
+                type: 'partialTranscript',
+                text: parsed.text,
+                confidence: parsed.confidence,
+                timestamp: parsed.timestamp,
+              });
+            }
           }
           if (parsed.kind === 'final') {
-            if (!finalText) {
-              finalText = parsed.text;
-            } else if (parsed.text.startsWith(finalText)) {
-              finalText = parsed.text;
-            } else if (!finalText.startsWith(parsed.text)) {
-              finalText = `${finalText} ${parsed.text}`.trim();
-            }
+            segment.finalText = mergeTranscript(segment.finalText, parsed.text) ?? segment.finalText;
             if (parsed.segments?.length) {
-              diarizedSegments = parsed.segments;
+              segment.diarizedSegments = parsed.segments;
+            }
+            if (activeStreamingSegment === segment) {
+              finalText = mergeTranscript(committedStreamingText, segment.finalText);
             }
           }
         } catch {
@@ -179,7 +282,13 @@ export const createSpeechToTextSession = (
         }
       })
       .then((handle) => {
-        streamingHandle = handle;
+        const sessionEnded =
+          state === 'idle' || state === 'cancelled' || state === 'completed' || state === 'error';
+        if (sessionEnded || activeStreamingSegment !== segment) {
+          handle.cancel();
+          return;
+        }
+        segment.handle = handle;
         if (pendingChunks.length) {
           pendingChunks.forEach((chunk) => handle.sendAudio(chunk));
           pendingChunks = [];
@@ -187,13 +296,47 @@ export const createSpeechToTextSession = (
       })
       .catch((error) => {
         streamingFailed = true;
-        emit({
-          type: 'error',
-          code: 'streaming_unavailable',
-          message: error instanceof Error ? error.message : String(error),
-        });
+        pendingChunks = [];
+        if (activeStreamingSegment === segment) {
+          activeStreamingSegment = null;
+        }
+        emitStreamingUnavailable(error);
+      })
+      .finally(() => {
+        if (streamingReady === ready) {
+          streamingReady = null;
+        }
       });
-    await streamingReady;
+    streamingReady = ready;
+    await ready;
+  };
+
+  const rotateStreamingSegment = async () => {
+    if (!config?.streamingEnabled || !activeStreamingSegment || streamingRotation) return;
+    const closingSegment = activeStreamingSegment;
+    activeStreamingSegment = null;
+    streamingText = null;
+    const nextSegment = createStreamingSegment(audioDurationMs);
+    streamingRotation = (async () => {
+      try {
+        if (closingSegment.handle) {
+          await closingSegment.handle.finalize();
+        }
+      } catch (error) {
+        streamingFailed = true;
+        emitStreamingUnavailable(error);
+      } finally {
+        commitStreamingSegment(closingSegment);
+      }
+      if (state !== 'recording' || !config?.streamingEnabled) {
+        return;
+      }
+      activeStreamingSegment = nextSegment;
+      await startStreamingSegment(nextSegment);
+    })().finally(() => {
+      streamingRotation = null;
+    });
+    await streamingRotation;
   };
 
   const finalizeWithError = async (error: unknown, code: string) => {
@@ -298,29 +441,38 @@ export const createSpeechToTextSession = (
     finalText = null;
     streamingText = null;
     streamingFailed = false;
+    committedStreamingText = null;
+    committedStreamingSegments = [];
     bufferedChunks.length = 0;
     pendingChunks = [];
     if (config.streamingEnabled) {
-      await startStreaming({
-        audio: new Uint8Array(),
-        model: config.model,
-        language: config.language,
-        silenceRemoval: config.silenceRemoval,
-        maxLatencyHintMs: config.maxLatencyHintMs,
-        sampleRate: config.sampleRate,
-      });
+      activeStreamingSegment = createStreamingSegment(audioDurationMs);
+      await startStreamingSegment(activeStreamingSegment);
     }
   };
 
   const pushAudioChunk = (chunk: AudioChunk) => {
     if (state !== 'recording') return;
     bufferedChunks.push(chunk.data);
-    if (chunk.durationMs) audioDurationMs += chunk.durationMs;
+    const durationMs = estimateChunkDurationMs(chunk, config?.sampleRate);
+    if (durationMs > 0) {
+      audioDurationMs += durationMs;
+      if (activeStreamingSegment) {
+        activeStreamingSegment.durationMs += durationMs;
+      }
+    }
     if (config?.streamingEnabled) {
-      if (streamingHandle) {
-        streamingHandle.sendAudio(chunk.data);
-      } else {
+      if (activeStreamingSegment?.handle) {
+        activeStreamingSegment.handle.sendAudio(chunk.data);
+      } else if (activeStreamingSegment || streamingRotation || streamingReady) {
         pendingChunks.push(chunk.data);
+      }
+      if (
+        activeStreamingSegment &&
+        activeStreamingSegment.durationMs >= STREAMING_SEGMENT_ROTATION_MS &&
+        !streamingRotation
+      ) {
+        void rotateStreamingSegment();
       }
     }
   };
@@ -328,50 +480,48 @@ export const createSpeechToTextSession = (
   const finalize = async () => {
     if (state !== 'recording') return;
     state = 'finalizing';
-
-    const request = config
-      ? {
-          audio: concatChunks(bufferedChunks),
-          model: config.model,
-          language: config.language,
-          silenceRemoval: config.silenceRemoval,
-          maxLatencyHintMs: config.maxLatencyHintMs,
-          sampleRate: config.sampleRate,
-        }
-      : {
-          audio: concatChunks(bufferedChunks),
-          model: { selection: 'fast' as const },
-        };
-
-    if (config?.streamingEnabled && streamingHandle) {
-      try {
-        await streamingHandle.finalize();
-      } catch (error) {
-        streamingFailed = true;
-        emit({
-          type: 'error',
-          code: 'streaming_unavailable',
-          message: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
+    const request = buildRequest(concatChunks(bufferedChunks));
 
     if (config?.streamingEnabled) {
+      if (streamingRotation) {
+        await streamingRotation;
+      }
+      if (streamingReady) {
+        await streamingReady;
+      }
+      const closingSegment = activeStreamingSegment;
+      activeStreamingSegment = null;
       try {
-        const events = await deps.transcription.transcribe(request);
-        const finalEvent = events.find((event) => event.kind === 'final');
-        if (finalEvent?.text) {
-          finalText = finalEvent.text;
-        }
-        if (finalEvent?.segments?.length) {
-          diarizedSegments = finalEvent.segments;
+        if (closingSegment?.handle) {
+          await closingSegment.handle.finalize();
         }
       } catch (error) {
-        if (!finalText && !streamingText) {
-          await finalizeWithError(error, 'transcription_failed');
-          reset();
-          state = 'idle';
-          return;
+        streamingFailed = true;
+        emitStreamingUnavailable(error);
+      } finally {
+        commitStreamingSegment(closingSegment);
+      }
+      if (!finalText && streamingText?.trim()) {
+        finalText = mergeTranscript(committedStreamingText, streamingText);
+      }
+      const hasStreamingTranscript = Boolean(finalText?.trim() || streamingText?.trim());
+      if (!hasStreamingTranscript || streamingFailed) {
+        try {
+          const events = await deps.transcription.transcribe(request);
+          const finalEvent = events.find((event) => event.kind === 'final');
+          if (finalEvent?.text) {
+            finalText = finalEvent.text;
+          }
+          if (finalEvent?.segments?.length) {
+            diarizedSegments = finalEvent.segments;
+          }
+        } catch (error) {
+          if (!hasStreamingTranscript) {
+            await finalizeWithError(error, 'transcription_failed');
+            reset();
+            state = 'idle';
+            return;
+          }
         }
       }
     } else if (!finalText || streamingFailed) {
@@ -388,6 +538,10 @@ export const createSpeechToTextSession = (
         state = 'idle';
         return;
       }
+    }
+
+    if (!finalText && streamingText?.trim()) {
+      finalText = streamingText.trim();
     }
 
     rawTranscriptText = finalText ?? '';
@@ -474,8 +628,8 @@ export const createSpeechToTextSession = (
   const cancel = async () => {
     if (state === 'idle') return;
     state = 'cancelled';
-    if (streamingHandle) {
-      streamingHandle.cancel();
+    if (activeStreamingSegment?.handle) {
+      activeStreamingSegment.handle.cancel();
     }
     const historyItem = HistoryItemSchema.parse({
       id: idFactory(),

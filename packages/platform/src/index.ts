@@ -79,3 +79,5 @@ export interface PlatformAdapter {
   overlay: OverlayAdapter;
   permissions: PermissionsAdapter;
 }
+
+export * from './overlay';

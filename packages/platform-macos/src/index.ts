@@ -1,7 +1,7 @@
 import { createRequire } from 'module';
 import { execFile } from 'child_process';
 import { BrowserWindow, clipboard, screen, systemPreferences } from 'electron';
-import type { PlatformAdapter } from '@susurrare/platform';
+import { isOverlayDraggableState, type PlatformAdapter } from '@susurrare/platform';
 
 type RecordModule = {
   record: (options?: {
@@ -275,6 +275,7 @@ const overlayHtml = () => `
         backdrop-filter: blur(12px);
         box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
         transition: border-color 0.35s ease, box-shadow 0.35s ease;
+        -webkit-app-region: no-drag;
       }
       .mode {
         font-size: 10px;
@@ -351,6 +352,11 @@ const overlayHtml = () => `
       body[data-state='recording'] .wrap {
         border-color: rgba(124, 255, 176, 0.35);
         box-shadow: 0 12px 30px rgba(10, 40, 20, 0.45);
+        -webkit-app-region: drag;
+        cursor: grab;
+      }
+      body[data-state='recording'] .wrap:active {
+        cursor: grabbing;
       }
       body[data-state='processing'] .wrap {
         border-color: rgba(106, 167, 255, 0.35);
@@ -561,6 +567,12 @@ const overlayHtml = () => `
 </html>
 `;
 
+const syncOverlayInteractivity = () => {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  const draggable = isOverlayDraggableState(overlayState);
+  overlayWindow.setIgnoreMouseEvents(!draggable, { forward: !draggable });
+};
+
 const ensureOverlayWindow = () => {
   if (overlayWindow) return;
   const width = 420;
@@ -582,7 +594,7 @@ const ensureOverlayWindow = () => {
       sandbox: true,
     },
   });
-  overlayWindow.setIgnoreMouseEvents(true);
+  syncOverlayInteractivity();
   overlayWindow.setOpacity(0);
   const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize;
   const x = Math.round((screenWidth - width) / 2);
@@ -615,6 +627,7 @@ const ensureOverlayWindow = () => {
 
 const updateOverlayState = async (state: 'recording' | 'processing' | 'done') => {
   overlayState = state;
+  syncOverlayInteractivity();
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
   if (overlayWindow.webContents.isDestroyed()) return;
   if (!overlayReady) return;

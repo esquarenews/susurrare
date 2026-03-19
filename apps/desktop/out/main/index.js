@@ -21008,6 +21008,7 @@ const RetryPolicySchema = objectType({
 const OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const DEFAULT_PCM_BYTES_PER_SAMPLE = 2;
 const DEFAULT_SAFE_HEADROOM_BYTES = 512 * 1024;
+const DEFAULT_RECORDING_TIMEOUT_MS = 6e4;
 const estimateOpenAiTranscriptionMaxDurationMs = (sampleRate, maxUploadBytes = OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES, bytesPerSample = DEFAULT_PCM_BYTES_PER_SAMPLE) => {
   if (!Number.isFinite(sampleRate) || sampleRate <= 0) return 0;
   if (!Number.isFinite(maxUploadBytes) || maxUploadBytes <= 0) return 0;
@@ -21019,6 +21020,15 @@ const estimateOpenAiTranscriptionMaxDurationMs = (sampleRate, maxUploadBytes = O
 const estimateSafeOpenAiTranscriptionDurationMs = (sampleRate, headroomBytes = DEFAULT_SAFE_HEADROOM_BYTES) => {
   const effectiveBytes = Math.max(0, OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES - headroomBytes);
   return estimateOpenAiTranscriptionMaxDurationMs(sampleRate, effectiveBytes);
+};
+const resolveRecordingSilenceTimeoutMs = (configuredTimeoutMs, options) => {
+  if (options?.streamingEnabled && options.modelSelection === "meeting") {
+    return 0;
+  }
+  if (!Number.isFinite(configuredTimeoutMs ?? Number.NaN)) {
+    return DEFAULT_RECORDING_TIMEOUT_MS;
+  }
+  return Math.max(0, Math.trunc(configuredTimeoutMs ?? DEFAULT_RECORDING_TIMEOUT_MS));
 };
 const delay = (ms2) => new Promise((resolve2) => setTimeout(resolve2, ms2));
 const isOpenAIBaseUrl = (baseUrl) => baseUrl.includes("api.openai.com");
@@ -21644,6 +21654,7 @@ objectType({
   outcome: enumType(["inserted", "clipboard", "failed"]),
   method: enumType(["accessibility", "clipboard"]).optional()
 });
+const STREAMING_SEGMENT_ROTATION_MS = 8 * 60 * 1e3;
 const concatChunks$1 = (chunks) => {
   const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
   const merged = new Uint8Array(total);
@@ -21658,6 +21669,33 @@ const countWords = (text) => {
   const trimmed = text.trim();
   if (!trimmed) return 0;
   return trimmed.split(/\s+/).filter(Boolean).length;
+};
+const mergeTranscript = (existing, next) => {
+  const trimmedNext = next?.trim();
+  if (!trimmedNext) return existing;
+  if (!existing) return trimmedNext;
+  if (trimmedNext.startsWith(existing)) return trimmedNext;
+  if (existing.startsWith(trimmedNext)) return existing;
+  return `${existing} ${trimmedNext}`.trim();
+};
+const appendSegmentsWithOffset = (all, segments, timeOffsetSeconds) => {
+  if (!segments?.length) return;
+  segments.forEach((segment) => {
+    all.push({
+      ...segment,
+      start: segment.start + timeOffsetSeconds,
+      end: segment.end + timeOffsetSeconds
+    });
+  });
+};
+const estimateChunkDurationMs = (chunk, sampleRate) => {
+  if (typeof chunk.durationMs === "number" && Number.isFinite(chunk.durationMs)) {
+    return chunk.durationMs;
+  }
+  if (!sampleRate || !Number.isFinite(sampleRate) || sampleRate <= 0) {
+    return 0;
+  }
+  return Math.round(chunk.data.length / (sampleRate * 2) * 1e3);
 };
 const formatSpeakerLabel = (speaker, index2) => {
   if (!speaker) return `Speaker ${index2 + 1}`;
@@ -21717,9 +21755,12 @@ const createSpeechToTextSession = (deps) => {
   let streamingText = null;
   let diarizedSegments = null;
   let rawTranscriptText = null;
-  let streamingHandle = null;
+  let activeStreamingSegment = null;
   let streamingFailed = false;
   let streamingReady = null;
+  let streamingRotation = null;
+  let committedStreamingText = null;
+  let committedStreamingSegments = [];
   let pendingChunks = [];
   const bufferedChunks = [];
   const listeners = /* @__PURE__ */ new Set();
@@ -21736,58 +21777,143 @@ const createSpeechToTextSession = (deps) => {
     streamingText = null;
     diarizedSegments = null;
     rawTranscriptText = null;
-    streamingHandle = null;
+    activeStreamingSegment = null;
     streamingFailed = false;
     streamingReady = null;
+    streamingRotation = null;
+    committedStreamingText = null;
+    committedStreamingSegments = [];
     pendingChunks = [];
     bufferedChunks.length = 0;
   };
-  const startStreaming = async (request) => {
+  const buildRequest = (audio) => config ? {
+    audio,
+    model: config.model,
+    language: config.language,
+    silenceRemoval: config.silenceRemoval,
+    maxLatencyHintMs: config.maxLatencyHintMs,
+    sampleRate: config.sampleRate
+  } : {
+    audio,
+    model: { selection: "fast" }
+  };
+  const createStreamingSegment = (startedAudioDurationMs) => ({
+    handle: null,
+    startedAudioDurationMs,
+    durationMs: 0,
+    partialText: "",
+    finalText: "",
+    diarizedSegments: null,
+    committed: false
+  });
+  const emitStreamingUnavailable = (error2) => {
+    emit({
+      type: "error",
+      code: "streaming_unavailable",
+      message: error2 instanceof Error ? error2.message : String(error2)
+    });
+  };
+  const commitStreamingSegment = (segment) => {
+    if (!segment || segment.committed) return;
+    segment.committed = true;
+    const bestText = segment.finalText.trim() || segment.partialText.trim();
+    committedStreamingText = mergeTranscript(committedStreamingText, bestText);
+    finalText = committedStreamingText;
+    if (segment.diarizedSegments?.length) {
+      appendSegmentsWithOffset(
+        committedStreamingSegments,
+        segment.diarizedSegments,
+        segment.startedAudioDurationMs / 1e3
+      );
+      diarizedSegments = committedStreamingSegments.length ? [...committedStreamingSegments] : null;
+    }
+    if (activeStreamingSegment === segment) {
+      streamingText = null;
+    }
+  };
+  const startStreamingSegment = async (segment) => {
     if (!deps.transcription.openStream) {
       streamingFailed = true;
       return;
     }
-    streamingReady = deps.transcription.openStream(request, (event) => {
+    const ready = deps.transcription.openStream(buildRequest(new Uint8Array()), (event) => {
       try {
         const parsed = TranscriptionEventSchema.parse(event);
         if (parsed.kind === "partial") {
-          streamingText = parsed.text;
-          emit({
-            type: "partialTranscript",
-            text: parsed.text,
-            confidence: parsed.confidence,
-            timestamp: parsed.timestamp
-          });
+          segment.partialText = parsed.text;
+          if (activeStreamingSegment === segment) {
+            streamingText = parsed.text;
+            emit({
+              type: "partialTranscript",
+              text: parsed.text,
+              confidence: parsed.confidence,
+              timestamp: parsed.timestamp
+            });
+          }
         }
         if (parsed.kind === "final") {
-          if (!finalText) {
-            finalText = parsed.text;
-          } else if (parsed.text.startsWith(finalText)) {
-            finalText = parsed.text;
-          } else if (!finalText.startsWith(parsed.text)) {
-            finalText = `${finalText} ${parsed.text}`.trim();
-          }
+          segment.finalText = mergeTranscript(segment.finalText, parsed.text) ?? segment.finalText;
           if (parsed.segments?.length) {
-            diarizedSegments = parsed.segments;
+            segment.diarizedSegments = parsed.segments;
+          }
+          if (activeStreamingSegment === segment) {
+            finalText = mergeTranscript(committedStreamingText, segment.finalText);
           }
         }
       } catch {
       }
     }).then((handle) => {
-      streamingHandle = handle;
+      const sessionEnded = state2 === "idle" || state2 === "cancelled" || state2 === "completed" || state2 === "error";
+      if (sessionEnded || activeStreamingSegment !== segment) {
+        handle.cancel();
+        return;
+      }
+      segment.handle = handle;
       if (pendingChunks.length) {
         pendingChunks.forEach((chunk) => handle.sendAudio(chunk));
         pendingChunks = [];
       }
     }).catch((error2) => {
       streamingFailed = true;
-      emit({
-        type: "error",
-        code: "streaming_unavailable",
-        message: error2 instanceof Error ? error2.message : String(error2)
-      });
+      pendingChunks = [];
+      if (activeStreamingSegment === segment) {
+        activeStreamingSegment = null;
+      }
+      emitStreamingUnavailable(error2);
+    }).finally(() => {
+      if (streamingReady === ready) {
+        streamingReady = null;
+      }
     });
-    await streamingReady;
+    streamingReady = ready;
+    await ready;
+  };
+  const rotateStreamingSegment = async () => {
+    if (!config?.streamingEnabled || !activeStreamingSegment || streamingRotation) return;
+    const closingSegment = activeStreamingSegment;
+    activeStreamingSegment = null;
+    streamingText = null;
+    const nextSegment = createStreamingSegment(audioDurationMs);
+    streamingRotation = (async () => {
+      try {
+        if (closingSegment.handle) {
+          await closingSegment.handle.finalize();
+        }
+      } catch (error2) {
+        streamingFailed = true;
+        emitStreamingUnavailable(error2);
+      } finally {
+        commitStreamingSegment(closingSegment);
+      }
+      if (state2 !== "recording" || !config?.streamingEnabled) {
+        return;
+      }
+      activeStreamingSegment = nextSegment;
+      await startStreamingSegment(nextSegment);
+    })().finally(() => {
+      streamingRotation = null;
+    });
+    await streamingRotation;
   };
   const finalizeWithError = async (error2, code) => {
     const message = error2 instanceof Error ? error2.message : String(error2);
@@ -21884,73 +22010,80 @@ const createSpeechToTextSession = (deps) => {
     finalText = null;
     streamingText = null;
     streamingFailed = false;
+    committedStreamingText = null;
+    committedStreamingSegments = [];
     bufferedChunks.length = 0;
     pendingChunks = [];
     if (config.streamingEnabled) {
-      await startStreaming({
-        audio: new Uint8Array(),
-        model: config.model,
-        language: config.language,
-        silenceRemoval: config.silenceRemoval,
-        maxLatencyHintMs: config.maxLatencyHintMs,
-        sampleRate: config.sampleRate
-      });
+      activeStreamingSegment = createStreamingSegment(audioDurationMs);
+      await startStreamingSegment(activeStreamingSegment);
     }
   };
   const pushAudioChunk = (chunk) => {
     if (state2 !== "recording") return;
     bufferedChunks.push(chunk.data);
-    if (chunk.durationMs) audioDurationMs += chunk.durationMs;
+    const durationMs = estimateChunkDurationMs(chunk, config?.sampleRate);
+    if (durationMs > 0) {
+      audioDurationMs += durationMs;
+      if (activeStreamingSegment) {
+        activeStreamingSegment.durationMs += durationMs;
+      }
+    }
     if (config?.streamingEnabled) {
-      if (streamingHandle) {
-        streamingHandle.sendAudio(chunk.data);
-      } else {
+      if (activeStreamingSegment?.handle) {
+        activeStreamingSegment.handle.sendAudio(chunk.data);
+      } else if (activeStreamingSegment || streamingRotation || streamingReady) {
         pendingChunks.push(chunk.data);
+      }
+      if (activeStreamingSegment && activeStreamingSegment.durationMs >= STREAMING_SEGMENT_ROTATION_MS && !streamingRotation) {
+        void rotateStreamingSegment();
       }
     }
   };
   const finalize = async () => {
     if (state2 !== "recording") return;
     state2 = "finalizing";
-    const request = config ? {
-      audio: concatChunks$1(bufferedChunks),
-      model: config.model,
-      language: config.language,
-      silenceRemoval: config.silenceRemoval,
-      maxLatencyHintMs: config.maxLatencyHintMs,
-      sampleRate: config.sampleRate
-    } : {
-      audio: concatChunks$1(bufferedChunks),
-      model: { selection: "fast" }
-    };
-    if (config?.streamingEnabled && streamingHandle) {
+    const request = buildRequest(concatChunks$1(bufferedChunks));
+    if (config?.streamingEnabled) {
+      if (streamingRotation) {
+        await streamingRotation;
+      }
+      if (streamingReady) {
+        await streamingReady;
+      }
+      const closingSegment = activeStreamingSegment;
+      activeStreamingSegment = null;
       try {
-        await streamingHandle.finalize();
+        if (closingSegment?.handle) {
+          await closingSegment.handle.finalize();
+        }
       } catch (error2) {
         streamingFailed = true;
-        emit({
-          type: "error",
-          code: "streaming_unavailable",
-          message: error2 instanceof Error ? error2.message : String(error2)
-        });
+        emitStreamingUnavailable(error2);
+      } finally {
+        commitStreamingSegment(closingSegment);
       }
-    }
-    if (config?.streamingEnabled) {
-      try {
-        const events = await deps.transcription.transcribe(request);
-        const finalEvent = events.find((event) => event.kind === "final");
-        if (finalEvent?.text) {
-          finalText = finalEvent.text;
-        }
-        if (finalEvent?.segments?.length) {
-          diarizedSegments = finalEvent.segments;
-        }
-      } catch (error2) {
-        if (!finalText && !streamingText) {
-          await finalizeWithError(error2, "transcription_failed");
-          reset();
-          state2 = "idle";
-          return;
+      if (!finalText && streamingText?.trim()) {
+        finalText = mergeTranscript(committedStreamingText, streamingText);
+      }
+      const hasStreamingTranscript = Boolean(finalText?.trim() || streamingText?.trim());
+      if (!hasStreamingTranscript || streamingFailed) {
+        try {
+          const events = await deps.transcription.transcribe(request);
+          const finalEvent = events.find((event) => event.kind === "final");
+          if (finalEvent?.text) {
+            finalText = finalEvent.text;
+          }
+          if (finalEvent?.segments?.length) {
+            diarizedSegments = finalEvent.segments;
+          }
+        } catch (error2) {
+          if (!hasStreamingTranscript) {
+            await finalizeWithError(error2, "transcription_failed");
+            reset();
+            state2 = "idle";
+            return;
+          }
         }
       }
     } else if (!finalText || streamingFailed) {
@@ -21967,6 +22100,9 @@ const createSpeechToTextSession = (deps) => {
         state2 = "idle";
         return;
       }
+    }
+    if (!finalText && streamingText?.trim()) {
+      finalText = streamingText.trim();
     }
     rawTranscriptText = finalText ?? "";
     if (diarizedSegments && diarizedSegments.length) {
@@ -22046,8 +22182,8 @@ const createSpeechToTextSession = (deps) => {
   const cancel = async () => {
     if (state2 === "idle") return;
     state2 = "cancelled";
-    if (streamingHandle) {
-      streamingHandle.cancel();
+    if (activeStreamingSegment?.handle) {
+      activeStreamingSegment.handle.cancel();
     }
     const historyItem = HistoryItemSchema.parse({
       id: idFactory(),
@@ -22085,6 +22221,7 @@ const createSpeechToTextSession = (deps) => {
     getState: () => state2
   };
 };
+const isOverlayDraggableState = (state2) => state2 === "recording";
 const require$1 = createRequire(import.meta.url);
 const record = require$1("node-record-lpcm16");
 let uiohookModule = null;
@@ -22267,6 +22404,7 @@ const overlayHtml = () => `
         backdrop-filter: blur(12px);
         box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
         transition: border-color 0.35s ease, box-shadow 0.35s ease;
+        -webkit-app-region: no-drag;
       }
       .mode {
         font-size: 10px;
@@ -22343,6 +22481,11 @@ const overlayHtml = () => `
       body[data-state='recording'] .wrap {
         border-color: rgba(124, 255, 176, 0.35);
         box-shadow: 0 12px 30px rgba(10, 40, 20, 0.45);
+        -webkit-app-region: drag;
+        cursor: grab;
+      }
+      body[data-state='recording'] .wrap:active {
+        cursor: grabbing;
       }
       body[data-state='processing'] .wrap {
         border-color: rgba(106, 167, 255, 0.35);
@@ -22552,6 +22695,11 @@ const overlayHtml = () => `
   </body>
 </html>
 `;
+const syncOverlayInteractivity = () => {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  const draggable = isOverlayDraggableState(overlayState);
+  overlayWindow.setIgnoreMouseEvents(!draggable, { forward: !draggable });
+};
 const ensureOverlayWindow = () => {
   if (overlayWindow) return;
   const width = 420;
@@ -22573,7 +22721,7 @@ const ensureOverlayWindow = () => {
       sandbox: true
     }
   });
-  overlayWindow.setIgnoreMouseEvents(true);
+  syncOverlayInteractivity();
   overlayWindow.setOpacity(0);
   const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize;
   const x = Math.round((screenWidth - width) / 2);
@@ -22599,6 +22747,7 @@ const ensureOverlayWindow = () => {
 };
 const updateOverlayState = async (state2) => {
   overlayState = state2;
+  syncOverlayInteractivity();
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
   if (overlayWindow.webContents.isDestroyed()) return;
   if (!overlayReady) return;
@@ -38061,6 +38210,10 @@ const startRecording = async () => {
     const startedAt = Date.now();
     let recordingLimitWarningShown = false;
     const language = settings.transcriptionLanguage && settings.transcriptionLanguage !== "auto" ? settings.transcriptionLanguage : void 0;
+    const silenceTimeoutMs = resolveRecordingSilenceTimeoutMs(settings.recordingTimeoutMs, {
+      streamingEnabled,
+      modelSelection: mode?.model.selection
+    });
     await speechSession?.start({
       model: mode?.model ?? { selection: "fast" },
       streamingEnabled,
@@ -38097,12 +38250,11 @@ const startRecording = async () => {
               break;
             }
           }
-          const timeoutMs = settings.recordingTimeoutMs ?? 6e4;
-          if (!silenceStopRequested && timeoutMs > 0) {
+          if (!silenceStopRequested && silenceTimeoutMs > 0) {
             const rms = typeof chunk.rms === "number" ? chunk.rms : computeRms(chunk.data);
             if (rms > SILENCE_RMS_THRESHOLD) {
               lastSoundAt = Date.now();
-            } else if (Date.now() - lastSoundAt > timeoutMs) {
+            } else if (Date.now() - lastSoundAt > silenceTimeoutMs) {
               silenceStopRequested = true;
               void stopRecording();
               break;

@@ -1,6 +1,7 @@
 export const OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 export const DEFAULT_PCM_BYTES_PER_SAMPLE = 2;
 export const DEFAULT_SAFE_HEADROOM_BYTES = 512 * 1024;
+export const DEFAULT_RECORDING_TIMEOUT_MS = 60_000;
 
 export const estimateOpenAiTranscriptionMaxDurationMs = (
   sampleRate: number,
@@ -29,4 +30,20 @@ export const formatDurationMinutesSeconds = (durationMs: number) => {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
+export const resolveRecordingSilenceTimeoutMs = (
+  configuredTimeoutMs: number | undefined,
+  options?: {
+    streamingEnabled?: boolean;
+    modelSelection?: 'fast' | 'accurate' | 'meeting' | 'pinned';
+  }
+) => {
+  if (options?.streamingEnabled && options.modelSelection === 'meeting') {
+    return 0;
+  }
+  if (!Number.isFinite(configuredTimeoutMs ?? Number.NaN)) {
+    return DEFAULT_RECORDING_TIMEOUT_MS;
+  }
+  return Math.max(0, Math.trunc(configuredTimeoutMs ?? DEFAULT_RECORDING_TIMEOUT_MS));
 };

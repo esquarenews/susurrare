@@ -16,7 +16,7 @@ const baseContext = {
 };
 
 describe('speech-to-text golden path', () => {
-  it('streams partials, finalizes, inserts, and saves history', async () => {
+  it('streams partials, finalizes, inserts, and saves history without HTTP fallback', async () => {
     const events: SpeechToTextEvent[] = [];
     const history: Array<unknown> = [];
 
@@ -58,8 +58,64 @@ describe('speech-to-text golden path', () => {
 
     expect(events.some((event) => event.type === 'partialTranscript')).toBe(true);
     const final = events.find((event) => event.type === 'finalTranscript');
-    expect(final && 'text' in final ? final.text : '').toBe('HTTP fallback');
+    expect(final && 'text' in final ? final.text : '').toBe('Hello world');
+    expect(transcription.transcribe).not.toHaveBeenCalled();
     expect(history.length).toBe(1);
+  });
+
+  it('rotates long-running realtime streams and concatenates streamed transcript segments', async () => {
+    const insertText = vi.fn(async () => ({ success: true, method: 'accessibility' as const }));
+    const openStream = vi
+      .fn()
+      .mockImplementationOnce(async (_req, onEvent) => ({
+        sendAudio: () => undefined,
+        finalize: async () => {
+          onEvent({ kind: 'final', text: 'first segment', timestamp: Date.now() });
+        },
+        cancel: () => undefined,
+      }))
+      .mockImplementationOnce(async (_req, onEvent) => ({
+        sendAudio: () => undefined,
+        finalize: async () => {
+          onEvent({ kind: 'final', text: 'second segment', timestamp: Date.now() });
+        },
+        cancel: () => undefined,
+      }));
+
+    const transcription: TranscriptionClient = {
+      transcribe: vi.fn(async () => [
+        { kind: 'final' as const, text: 'HTTP fallback', timestamp: Date.now() },
+      ]),
+      stream: vi.fn(async () => undefined),
+      openStream,
+    };
+
+    const session = createSpeechToTextSession({
+      transcription,
+      insertText,
+      clipboard: vi.fn(async () => undefined),
+      history: { add: vi.fn(async () => undefined) },
+      pipelineContext: baseContext,
+    });
+
+    await session.start({
+      model: { selection: 'meeting' },
+      streamingEnabled: true,
+      sampleRate: 24000,
+    });
+    session.pushAudioChunk({
+      data: new Uint8Array([1, 2, 3]),
+      timestamp: Date.now(),
+      durationMs: 8 * 60 * 1000,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    session.pushAudioChunk({ data: new Uint8Array([4, 5, 6]), timestamp: Date.now(), durationMs: 1000 });
+    await session.finalize();
+
+    expect(openStream).toHaveBeenCalledTimes(2);
+    expect(insertText).toHaveBeenCalledWith('first segment second segment');
+    expect(transcription.transcribe).not.toHaveBeenCalled();
   });
 
   it('applies rewrite prompt before insertion', async () => {
@@ -339,7 +395,7 @@ describe('speech-to-text golden path', () => {
     expect(session.getState()).toBe('idle');
   });
 
-  it('continues when streaming finalize/transcribe fail but partial transcript exists', async () => {
+  it('falls back to the surviving partial transcript when streaming finalize/transcribe fail', async () => {
     const events: SpeechToTextEvent[] = [];
     const insertText = vi.fn(async () => ({ success: true, method: 'accessibility' as const }));
 
@@ -371,7 +427,7 @@ describe('speech-to-text golden path', () => {
     session.pushAudioChunk({ data: new Uint8Array([1]), timestamp: Date.now() });
     await session.finalize();
 
-    expect(insertText).toHaveBeenCalledWith('');
+    expect(insertText).toHaveBeenCalledWith('partial text');
     const completed = events.find((event) => event.type === 'completed');
     expect(completed && 'outcome' in completed ? completed.outcome.status : null).toBe('inserted');
   });

@@ -3,6 +3,7 @@ import {
   estimateOpenAiTranscriptionMaxDurationMs,
   estimateSafeOpenAiTranscriptionDurationMs,
   formatDurationMinutesSeconds,
+  resolveRecordingSilenceTimeoutMs,
 } from '@susurrare/core';
 
 describe('recording limits', () => {
@@ -33,5 +34,20 @@ describe('recording limits', () => {
     expect(formatDurationMinutesSeconds(65_999)).toBe('01:05');
     expect(formatDurationMinutesSeconds(802_816)).toBe('13:22');
     expect(formatDurationMinutesSeconds(Number.NaN)).toBe('00:00');
+  });
+
+  it('disables silence timeout for streaming meeting mode', () => {
+    expect(
+      resolveRecordingSilenceTimeoutMs(60_000, {
+        streamingEnabled: true,
+        modelSelection: 'meeting',
+      })
+    ).toBe(0);
+    expect(
+      resolveRecordingSilenceTimeoutMs(60_000, {
+        streamingEnabled: true,
+        modelSelection: 'fast',
+      })
+    ).toBe(60_000);
   });
 });

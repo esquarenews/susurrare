@@ -34,6 +34,7 @@ import {
   createTranscriptionClient,
   estimateSafeOpenAiTranscriptionDurationMs,
   maskApiKeyForRenderer,
+  resolveRecordingSilenceTimeoutMs,
   stripApiKeyFromSettings,
   type WebSocketLike,
   type Settings,
@@ -780,6 +781,10 @@ const startRecording = async () => {
       settings.transcriptionLanguage && settings.transcriptionLanguage !== 'auto'
         ? settings.transcriptionLanguage
         : undefined;
+    const silenceTimeoutMs = resolveRecordingSilenceTimeoutMs(settings.recordingTimeoutMs, {
+      streamingEnabled,
+      modelSelection: mode?.model.selection,
+    });
     await speechSession?.start({
       model: mode?.model ?? { selection: 'fast' },
       streamingEnabled,
@@ -816,12 +821,11 @@ const startRecording = async () => {
               break;
             }
           }
-          const timeoutMs = settings.recordingTimeoutMs ?? 60000;
-          if (!silenceStopRequested && timeoutMs > 0) {
+          if (!silenceStopRequested && silenceTimeoutMs > 0) {
             const rms = typeof chunk.rms === 'number' ? chunk.rms : computeRms(chunk.data);
             if (rms > SILENCE_RMS_THRESHOLD) {
               lastSoundAt = Date.now();
-            } else if (Date.now() - lastSoundAt > timeoutMs) {
+            } else if (Date.now() - lastSoundAt > silenceTimeoutMs) {
               silenceStopRequested = true;
               void stopRecording();
               break;
