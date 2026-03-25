@@ -3,6 +3,7 @@ import {
   estimateOpenAiTranscriptionMaxDurationMs,
   estimateSafeOpenAiTranscriptionDurationMs,
   formatDurationMinutesSeconds,
+  resolveRecordingStreamingEnabled,
   resolveRecordingSilenceTimeoutMs,
 } from '@susurrare/core';
 
@@ -36,10 +37,23 @@ describe('recording limits', () => {
     expect(formatDurationMinutesSeconds(Number.NaN)).toBe('00:00');
   });
 
-  it('disables silence timeout for streaming meeting mode', () => {
+  it('forces chunked streaming for meeting mode', () => {
+    expect(resolveRecordingStreamingEnabled(false, 'meeting')).toBe(true);
+    expect(resolveRecordingStreamingEnabled(undefined, 'meeting')).toBe(true);
+    expect(resolveRecordingStreamingEnabled(false, 'fast')).toBe(false);
+    expect(resolveRecordingStreamingEnabled(undefined, 'fast')).toBe(true);
+  });
+
+  it('disables silence timeout for meeting mode', () => {
     expect(
       resolveRecordingSilenceTimeoutMs(60_000, {
         streamingEnabled: true,
+        modelSelection: 'meeting',
+      })
+    ).toBe(0);
+    expect(
+      resolveRecordingSilenceTimeoutMs(60_000, {
+        streamingEnabled: false,
         modelSelection: 'meeting',
       })
     ).toBe(0);

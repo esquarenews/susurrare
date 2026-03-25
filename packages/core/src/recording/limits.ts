@@ -3,6 +3,8 @@ export const DEFAULT_PCM_BYTES_PER_SAMPLE = 2;
 export const DEFAULT_SAFE_HEADROOM_BYTES = 512 * 1024;
 export const DEFAULT_RECORDING_TIMEOUT_MS = 60_000;
 
+type RecordingModelSelection = 'fast' | 'accurate' | 'meeting' | 'pinned';
+
 export const estimateOpenAiTranscriptionMaxDurationMs = (
   sampleRate: number,
   maxUploadBytes = OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES,
@@ -32,14 +34,30 @@ export const formatDurationMinutesSeconds = (durationMs: number) => {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 };
 
+export const resolveRecordingStreamingEnabled = (
+  configuredStreamingEnabled: boolean | undefined,
+  modelSelection: RecordingModelSelection | undefined
+) => {
+  if (modelSelection === 'meeting') {
+    return true;
+  }
+  return configuredStreamingEnabled ?? true;
+};
+
 export const resolveRecordingSilenceTimeoutMs = (
   configuredTimeoutMs: number | undefined,
   options?: {
     streamingEnabled?: boolean;
-    modelSelection?: 'fast' | 'accurate' | 'meeting' | 'pinned';
+    modelSelection?: RecordingModelSelection;
   }
 ) => {
-  if (options?.streamingEnabled && options.modelSelection === 'meeting') {
+  if (
+    resolveRecordingStreamingEnabled(options?.streamingEnabled, options?.modelSelection) &&
+    options?.modelSelection === 'meeting'
+  ) {
+    return 0;
+  }
+  if (options?.modelSelection === 'meeting') {
     return 0;
   }
   if (!Number.isFinite(configuredTimeoutMs ?? Number.NaN)) {

@@ -35,6 +35,7 @@ import {
   estimateSafeOpenAiTranscriptionDurationMs,
   maskApiKeyForRenderer,
   resolveRecordingSilenceTimeoutMs,
+  resolveRecordingStreamingEnabled,
   stripApiKeyFromSettings,
   type WebSocketLike,
   type Settings,
@@ -750,7 +751,10 @@ const startRecording = async () => {
       overlayHideTimer = null;
     }
     const mode = modes.find((item) => item.id === settings.activeModeId);
-    streamingEnabled = mode?.streamingEnabled ?? true;
+    streamingEnabled = resolveRecordingStreamingEnabled(
+      mode?.streamingEnabled,
+      mode?.model.selection
+    );
     lastOverlayPartial = '';
     if (platformAdapter.overlay.setMode) {
       platformAdapter.overlay.setMode(mode?.name ?? 'Default').catch(() => undefined);
