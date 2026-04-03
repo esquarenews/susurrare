@@ -21021,8 +21021,17 @@ const estimateSafeOpenAiTranscriptionDurationMs = (sampleRate, headroomBytes = D
   const effectiveBytes = Math.max(0, OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES - headroomBytes);
   return estimateOpenAiTranscriptionMaxDurationMs(sampleRate, effectiveBytes);
 };
+const resolveRecordingStreamingEnabled = (configuredStreamingEnabled, modelSelection) => {
+  if (modelSelection === "meeting") {
+    return true;
+  }
+  return configuredStreamingEnabled ?? true;
+};
 const resolveRecordingSilenceTimeoutMs = (configuredTimeoutMs, options) => {
-  if (options?.streamingEnabled && options.modelSelection === "meeting") {
+  if (resolveRecordingStreamingEnabled(options?.streamingEnabled, options?.modelSelection) && options?.modelSelection === "meeting") {
+    return 0;
+  }
+  if (options?.modelSelection === "meeting") {
     return 0;
   }
   if (!Number.isFinite(configuredTimeoutMs ?? Number.NaN)) {
@@ -38182,7 +38191,10 @@ const startRecording = async () => {
       overlayHideTimer = null;
     }
     const mode = modes.find((item) => item.id === settings.activeModeId);
-    streamingEnabled = mode?.streamingEnabled ?? true;
+    streamingEnabled = resolveRecordingStreamingEnabled(
+      mode?.streamingEnabled,
+      mode?.model.selection
+    );
     lastOverlayPartial = "";
     if (platformAdapter.overlay.setMode) {
       platformAdapter.overlay.setMode(mode?.name ?? "Default").catch(() => void 0);
