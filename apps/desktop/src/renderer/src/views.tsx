@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  deriveStatsSummaryActivity,
   estimateSafeOpenAiTranscriptionDurationMs,
   formatDurationMinutesSeconds,
 } from '@susurrare/core';
@@ -1206,21 +1207,28 @@ export const HomeView: React.FC<{
       summaryKeyRef.current = '';
       return;
     }
-    const hasActivity = series.some((metric) =>
-      metric.points.some((point) => point.value > 0)
-    );
-    if (!hasActivity) {
+    const payload = {
+      mode: statsMode,
+      series: series.map((metric) => ({
+        ...metric,
+        points: metric.points.slice(-8),
+      })),
+    };
+    const summaryActivity = deriveStatsSummaryActivity(payload);
+    if (!summaryActivity.hasAnyActivity) {
       setSummaryState({
-        text: 'No activity yet. Record a few dictations to unlock your weekly insights.',
+        text: summaryActivity.inactivityMessage,
         source: 'unavailable',
       });
       return;
     }
-    const trimmedSeries = series.map((metric) => ({
-      ...metric,
-      points: metric.points.slice(-8),
-    }));
-    const payload = { mode: statsMode, series: trimmedSeries };
+    if (!summaryActivity.hasLatestActivity) {
+      setSummaryState({
+        text: summaryActivity.inactivityMessage,
+        source: 'unavailable',
+      });
+      return;
+    }
     const key = JSON.stringify(payload);
     if (summaryKeyRef.current === key) return;
     summaryKeyRef.current = key;

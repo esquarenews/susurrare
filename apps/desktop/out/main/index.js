@@ -22230,6 +22230,48 @@ const createSpeechToTextSession = (deps) => {
     getState: () => state2
   };
 };
+const STATS_METRIC_IDS = [
+  "averageSpeed",
+  "wordsThisWeek",
+  "appsUsed",
+  "savedThisWeek"
+];
+const normalizeMetricValue = (value) => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+const getSeriesLatestValue = (series2, id) => {
+  const points = series2.find((entry) => entry.id === id)?.points;
+  const latestPoint = points?.[points.length - 1];
+  return normalizeMetricValue(latestPoint?.value ?? 0);
+};
+const deriveStatsSummaryActivity = (payload) => {
+  const latestMetrics = {
+    averageSpeed: getSeriesLatestValue(payload.series, "averageSpeed"),
+    wordsThisWeek: getSeriesLatestValue(payload.series, "wordsThisWeek"),
+    appsUsed: getSeriesLatestValue(payload.series, "appsUsed"),
+    savedThisWeek: getSeriesLatestValue(payload.series, "savedThisWeek")
+  };
+  const hasAnyActivity = payload.series.some(
+    (entry) => entry.points.some((point) => normalizeMetricValue(point.value) > 0)
+  );
+  const hasLatestActivity = STATS_METRIC_IDS.some((id) => latestMetrics[id] > 0);
+  const latestPeriodLabel = payload.mode === "rolling" ? "latest rolling 7-day window" : "current calendar week";
+  return {
+    hasAnyActivity,
+    hasLatestActivity,
+    latestPeriodLabel,
+    latestMetrics,
+    inactivityMessage: hasAnyActivity ? `No activity in the ${latestPeriodLabel} yet. Record a few dictations to see current insights.` : "No activity yet. Record a few dictations to unlock your weekly insights."
+  };
+};
+const buildStatsSummaryPromptInput = (payload, styleHint) => {
+  const activity = deriveStatsSummaryActivity(payload);
+  return {
+    mode: payload.mode,
+    focusPeriod: activity.latestPeriodLabel,
+    latestMetrics: activity.latestMetrics,
+    series: payload.series,
+    styleHint
+  };
+};
 const isOverlayDraggableState = (state2) => state2 === "recording";
 const getOverlayStatusLabel = (state2) => state2 === "done" ? "idle" : state2;
 const shouldRequireVisibleWindowForOverlayChannel = (channel) => channel === "levels";
@@ -38778,6 +38820,8 @@ const createStatsSummaryClientForSettings = () => {
       "Write 1-2 short sentences (max 45 words).",
       "Be encouraging but include a gentle nudge to improve when possible.",
       "Mention 1-2 concrete metrics. No bullets, no markdown.",
+      "Anchor the summary on the latest period first, then the short-term trend.",
+      "Do not praise consistency or momentum unless the latest period supports it.",
       "Vary phrasing from call to call. You may include at most one emoji."
     ].join(" ");
     const styleHints = [
@@ -38787,6 +38831,7 @@ const createStatsSummaryClientForSettings = () => {
       "Encouraging and light."
     ];
     const styleHint = styleHints[Math.floor(Math.random() * styleHints.length)];
+    const promptInput = buildStatsSummaryPromptInput(payload, styleHint);
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -38796,7 +38841,7 @@ const createStatsSummaryClientForSettings = () => {
       body: JSON.stringify({
         model: "gpt-4o-mini",
         instructions,
-        input: JSON.stringify({ ...payload, styleHint }),
+        input: JSON.stringify(promptInput),
         temperature: 0.65,
         max_output_tokens: 120
       })

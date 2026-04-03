@@ -10772,6 +10772,38 @@ objectType({
   outcome: enumType(["inserted", "clipboard", "failed"]),
   method: enumType(["accessibility", "clipboard"]).optional()
 });
+const STATS_METRIC_IDS = [
+  "averageSpeed",
+  "wordsThisWeek",
+  "appsUsed",
+  "savedThisWeek"
+];
+const normalizeMetricValue = (value) => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+const getSeriesLatestValue = (series, id2) => {
+  const points = series.find((entry) => entry.id === id2)?.points;
+  const latestPoint = points?.[points.length - 1];
+  return normalizeMetricValue(latestPoint?.value ?? 0);
+};
+const deriveStatsSummaryActivity = (payload) => {
+  const latestMetrics = {
+    averageSpeed: getSeriesLatestValue(payload.series, "averageSpeed"),
+    wordsThisWeek: getSeriesLatestValue(payload.series, "wordsThisWeek"),
+    appsUsed: getSeriesLatestValue(payload.series, "appsUsed"),
+    savedThisWeek: getSeriesLatestValue(payload.series, "savedThisWeek")
+  };
+  const hasAnyActivity = payload.series.some(
+    (entry) => entry.points.some((point) => normalizeMetricValue(point.value) > 0)
+  );
+  const hasLatestActivity = STATS_METRIC_IDS.some((id2) => latestMetrics[id2] > 0);
+  const latestPeriodLabel = payload.mode === "rolling" ? "latest rolling 7-day window" : "current calendar week";
+  return {
+    hasAnyActivity,
+    hasLatestActivity,
+    latestPeriodLabel,
+    latestMetrics,
+    inactivityMessage: hasAnyActivity ? `No activity in the ${latestPeriodLabel} yet. Record a few dictations to see current insights.` : "No activity yet. Record a few dictations to unlock your weekly insights."
+  };
+};
 const StatCard = ({ label, value }) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "stat-card", children: [
   /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "stat-value", children: value }),
   /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "stat-label", children: label })
@@ -11788,21 +11820,28 @@ const HomeView = ({ stats, historyItems, onNavigate }) => {
       summaryKeyRef.current = "";
       return;
     }
-    const hasActivity = series.some(
-      (metric) => metric.points.some((point) => point.value > 0)
-    );
-    if (!hasActivity) {
+    const payload = {
+      mode: statsMode,
+      series: series.map((metric) => ({
+        ...metric,
+        points: metric.points.slice(-8)
+      }))
+    };
+    const summaryActivity = deriveStatsSummaryActivity(payload);
+    if (!summaryActivity.hasAnyActivity) {
       setSummaryState({
-        text: "No activity yet. Record a few dictations to unlock your weekly insights.",
+        text: summaryActivity.inactivityMessage,
         source: "unavailable"
       });
       return;
     }
-    const trimmedSeries = series.map((metric) => ({
-      ...metric,
-      points: metric.points.slice(-8)
-    }));
-    const payload = { mode: statsMode, series: trimmedSeries };
+    if (!summaryActivity.hasLatestActivity) {
+      setSummaryState({
+        text: summaryActivity.inactivityMessage,
+        source: "unavailable"
+      });
+      return;
+    }
     const key = JSON.stringify(payload);
     if (summaryKeyRef.current === key) return;
     summaryKeyRef.current = key;

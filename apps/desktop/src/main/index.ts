@@ -33,6 +33,7 @@ import {
   createSpeechToTextSession,
   createTranscriptionClient,
   estimateSafeOpenAiTranscriptionDurationMs,
+  buildStatsSummaryPromptInput,
   maskApiKeyForRenderer,
   resolveRecordingSilenceTimeoutMs,
   resolveRecordingStreamingEnabled,
@@ -1188,6 +1189,8 @@ const createStatsSummaryClientForSettings = () => {
       'Write 1-2 short sentences (max 45 words).',
       'Be encouraging but include a gentle nudge to improve when possible.',
       'Mention 1-2 concrete metrics. No bullets, no markdown.',
+      'Anchor the summary on the latest period first, then the short-term trend.',
+      'Do not praise consistency or momentum unless the latest period supports it.',
       'Vary phrasing from call to call. You may include at most one emoji.',
     ].join(' ');
     const styleHints = [
@@ -1197,6 +1200,7 @@ const createStatsSummaryClientForSettings = () => {
       'Encouraging and light.',
     ];
     const styleHint = styleHints[Math.floor(Math.random() * styleHints.length)];
+    const promptInput = buildStatsSummaryPromptInput(payload, styleHint);
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1206,7 +1210,7 @@ const createStatsSummaryClientForSettings = () => {
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         instructions,
-        input: JSON.stringify({ ...payload, styleHint }),
+        input: JSON.stringify(promptInput),
         temperature: 0.65,
         max_output_tokens: 120,
       }),
