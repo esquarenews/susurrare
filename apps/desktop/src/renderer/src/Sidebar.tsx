@@ -192,26 +192,19 @@ const NavIcon: React.FC<{ id: NavId; active: boolean }> = ({ id, active }) => {
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({ items, active, onSelect }) => {
-  const [versionLabel, setVersionLabel] = useState('Susurrare');
+  const [versionLabel, setVersionLabel] = useState('Vocsen');
 
   useEffect(() => {
     window.susurrare.app
       .info()
       .then((info) => {
-        setVersionLabel(info.version ? `Susurrare v${info.version}` : info.name ?? 'Susurrare');
+        setVersionLabel(info.version ? `Vocsen v${info.version}` : 'Vocsen');
       })
       .catch(() => undefined);
   }, []);
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-header">
-        <div className="app-icon" aria-hidden />
-        <div>
-          <div className="brand">Susurrare</div>
-          <div className="subtitle">It&apos;s Latin for Whisper</div>
-        </div>
-      </div>
       <nav className="nav">
         {items.map((item) => (
           <button

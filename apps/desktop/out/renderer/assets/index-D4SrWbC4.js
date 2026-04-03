@@ -11032,7 +11032,7 @@ const buildPermissionNotices = (permissions) => {
     notices.push({
       id: "microphone",
       title: "Microphone capture is unavailable",
-      body: "Grant microphone access so Susurrare can record audio for transcription."
+      body: "Grant microphone access so Vocsen can record audio for transcription."
     });
   }
   return notices;
@@ -11876,7 +11876,7 @@ const HomeView = ({ stats, historyItems, onNavigate }) => {
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "stats-chart-grid", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "stats-chart-card stats-summary-card", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "stats-chart-header", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Susurrare Bot" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Vocsen Briefing" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tag", children: summaryTag })
           ] }),
           summaryState.source === "loading" ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "stats-thinking", "aria-label": "AI thinking", children: [
@@ -11965,7 +11965,7 @@ const HomeView = ({ stats, historyItems, onNavigate }) => {
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "action-card action-card-nav", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "action-card-copy", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: "Add vocabulary" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Teach Susurrare names, acronyms, and jargon." })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Teach Vocsen names, acronyms, and jargon." })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chip", onClick: () => onNavigate({ view: "vocabulary" }), children: "Take me there" })
         ] })
@@ -12505,7 +12505,7 @@ const VocabularyView = () => {
           ariaLabel: "Open Vocabulary help section"
         }
       ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Help Susurrare recognize names, acronyms, or jargon with replacements." })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Help Vocsen recognize names, acronyms, or jargon with replacements." })
     ] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "card", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "form-row", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { children: [
@@ -13183,20 +13183,13 @@ const NavIcon = ({ id: id2, active }) => {
   }
 };
 const Sidebar = ({ items, active, onSelect }) => {
-  const [versionLabel, setVersionLabel] = reactExports.useState("Susurrare");
+  const [versionLabel, setVersionLabel] = reactExports.useState("Vocsen");
   reactExports.useEffect(() => {
     window.susurrare.app.info().then((info) => {
-      setVersionLabel(info.version ? `Susurrare v${info.version}` : info.name ?? "Susurrare");
+      setVersionLabel(info.version ? `Vocsen v${info.version}` : "Vocsen");
     }).catch(() => void 0);
   }, []);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "sidebar", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-header", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "app-icon", "aria-hidden": true }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "brand", children: "Susurrare" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "subtitle", children: "It's Latin for Whisper" })
-      ] })
-    ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("nav", { className: "nav", children: items.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "button",
       {
@@ -13356,12 +13349,13 @@ const App = () => {
     setActive(next);
     setSettingsTargetSection(null);
   };
-  const handleHomeNavigate = (target) => {
-    setActive(target.view);
-    setSettingsTargetSection(
-      target.view === "configuration" ? target.section ?? null : null
-    );
-  };
+  const handleHomeNavigate = reactExports.useCallback(
+    (target) => {
+      setActive(target.view);
+      setSettingsTargetSection(target.view === "configuration" ? target.section ?? null : null);
+    },
+    []
+  );
   const content = reactExports.useMemo(() => {
     switch (active) {
       case "modes":
@@ -13396,8 +13390,19 @@ const App = () => {
     /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "app-main", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "top-bar", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "top-title", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "brand-mark", "aria-hidden": "true" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Susurrare" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "img",
+            {
+              src: "./images/vocsen-mark.svg",
+              alt: "",
+              className: "brand-mark",
+              "aria-hidden": "true"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "brand-copy", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "brand-wordmark", children: "vocsen" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "brand-context", children: "Desktop dictation layer" })
+          ] })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "top-actions", children: [
           missingPermissionCount > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "pill warning-pill", onClick: () => setActive("configuration"), children: [

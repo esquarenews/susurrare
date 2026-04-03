@@ -334,7 +334,7 @@ const buildPermissionNotices = (permissions: PermissionStatus | null): Permissio
       id: 'microphone',
       title: 'Microphone capture is unavailable',
       body:
-        'Grant microphone access so Susurrare can record audio for transcription.',
+        'Grant microphone access so Vocsen can record audio for transcription.',
     });
   }
   return notices;
@@ -1308,7 +1308,7 @@ export const HomeView: React.FC<{
             <div className="stats-chart-grid">
               <div className="stats-chart-card stats-summary-card">
                 <div className="stats-chart-header">
-                  <h3>Susurrare Bot</h3>
+                  <h3>Vocsen Briefing</h3>
                   <span className="tag">{summaryTag}</span>
                 </div>
                 {summaryState.source === 'loading' ? (
@@ -1405,7 +1405,7 @@ export const HomeView: React.FC<{
           <div className="action-card action-card-nav">
             <div className="action-card-copy">
               <h3>Add vocabulary</h3>
-              <p>Teach Susurrare names, acronyms, and jargon.</p>
+              <p>Teach Vocsen names, acronyms, and jargon.</p>
             </div>
             <button className="chip" onClick={() => onNavigate({ view: 'vocabulary' })}>
               Take me there
@@ -1997,7 +1997,7 @@ export const VocabularyView: React.FC = () => {
             sectionId="help-vocabulary"
             ariaLabel="Open Vocabulary help section"
           />
-          <p>Help Susurrare recognize names, acronyms, or jargon with replacements.</p>
+          <p>Help Vocsen recognize names, acronyms, or jargon with replacements.</p>
         </div>
       </div>
       <div className="card">

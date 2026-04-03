@@ -22231,6 +22231,35 @@ const createSpeechToTextSession = (deps) => {
   };
 };
 const isOverlayDraggableState = (state2) => state2 === "recording";
+const getOverlayStatusLabel = (state2) => state2 === "done" ? "idle" : state2;
+const shouldRequireVisibleWindowForOverlayChannel = (channel) => channel === "levels";
+const VOCSEN_OVERLAY_BAR_PROFILE = [1, 0.8846, 0.704, 1, 0.8846, 0.704];
+const mapWaveToVocsenOverlayLevels = (wave, bars = VOCSEN_OVERLAY_BAR_PROFILE.length) => {
+  if (!Number.isFinite(bars) || bars <= 0) return [];
+  if (!Array.isArray(wave) || wave.length === 0) return new Array(bars).fill(0);
+  const normalized = wave.map((value) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+    return Math.max(-1, Math.min(1, value));
+  });
+  return new Array(bars).fill(0).map((_2, index2) => {
+    const start = Math.floor(index2 / bars * normalized.length);
+    const end = Math.max(start + 1, Math.floor((index2 + 1) / bars * normalized.length));
+    let peak = 0;
+    let sum = 0;
+    let count = 0;
+    for (let sampleIndex = start; sampleIndex < Math.min(end, normalized.length); sampleIndex += 1) {
+      const magnitude = Math.abs(normalized[sampleIndex] ?? 0);
+      peak = Math.max(peak, magnitude);
+      sum += magnitude;
+      count += 1;
+    }
+    if (!count) return 0;
+    const average = sum / count;
+    const blended = peak * 0.66 + average * 0.34;
+    const boosted = Math.pow(Math.min(1, blended * 1.45), 0.78);
+    return Math.max(0, Math.min(1, boosted));
+  });
+};
 const require$1 = createRequire(import.meta.url);
 const record = require$1("node-record-lpcm16");
 let uiohookModule = null;
@@ -22360,14 +22389,19 @@ const ensureHookHandlers = () => {
   });
 };
 const DEFAULT_SAMPLE_RATE = 16e3;
-const STREAM_FRAME_MS = 20;
+const STREAM_FRAME_MS = 10;
 let currentRecording = null;
 let overlayWindow = null;
 let overlayState = "recording";
 let overlayText = "";
 let overlayMode = "";
 let overlayReady = false;
-let lastWaveSentAt = 0;
+let overlayLoadPromise = null;
+let resolveOverlayLoad = null;
+let pendingOverlayLevels = null;
+let overlayLevelsFlushScheduled = false;
+let overlayLevelsFlushInFlight = false;
+const hasPendingOverlayLevels = () => Array.isArray(pendingOverlayLevels) && pendingOverlayLevels.length > 0;
 const overlayHtml = () => `
 <!DOCTYPE html>
 <html>
@@ -22404,8 +22438,8 @@ const overlayHtml = () => `
         padding: 10px 18px 12px;
         box-sizing: border-box;
         display: grid;
-        gap: 6px;
-        align-items: center;
+        gap: 4px;
+        align-content: start;
         justify-items: center;
         background: rgba(10, 14, 18, 0.7);
         border: 1px solid rgba(124, 255, 176, 0.28);
@@ -22431,15 +22465,25 @@ const overlayHtml = () => `
         animation: modePulse 0.7s ease;
       }
       .wave-wrap {
-        width: 260px;
-        height: 32px;
-        border-radius: 16px;
-        overflow: hidden;
+        width: 108px;
+        height: 72px;
+        display: grid;
+        place-items: center;
       }
-      canvas {
+      .vocsen-meter {
         display: block;
-        width: 260px;
-        height: 32px;
+        width: 88px;
+        height: 68px;
+        overflow: visible;
+        transition: filter 0.35s ease, opacity 0.35s ease;
+      }
+      .vocsen-bar {
+        fill: none;
+        stroke: url(#vocsen-gradient);
+        stroke-width: 4px;
+        stroke-linecap: round;
+        vector-effect: non-scaling-stroke;
+        transition: opacity 0.2s ease;
       }
       .status {
         font-size: 11px;
@@ -22454,6 +22498,7 @@ const overlayHtml = () => `
         justify-content: center;
         align-items: center;
         gap: 16px;
+        min-height: 16px;
       }
       .timer {
         font-size: 11px;
@@ -22462,7 +22507,7 @@ const overlayHtml = () => `
         opacity: 0.85;
       }
       .timer[data-visible='false'] {
-        visibility: hidden;
+        display: none;
       }
       .partial {
         font-size: 12.5px;
@@ -22472,13 +22517,14 @@ const overlayHtml = () => `
         width: 100%;
         justify-self: stretch;
         max-width: 360px;
-        height: calc(1.35em * 3);
+        max-height: calc(1.35em * 2.7);
+        min-height: 0;
         white-space: normal;
         overflow-y: auto;
         text-overflow: unset;
         text-align: center;
         scrollbar-width: none;
-        transition: opacity 0.35s ease;
+        transition: opacity 0.2s ease, max-height 0.2s ease;
       }
       .partial::-webkit-scrollbar {
         width: 0;
@@ -22486,12 +22532,17 @@ const overlayHtml = () => `
       }
       .partial[data-empty='true'] {
         opacity: 0;
+        max-height: 0;
+        overflow: hidden;
       }
       body[data-state='recording'] .wrap {
         border-color: rgba(124, 255, 176, 0.35);
         box-shadow: 0 12px 30px rgba(10, 40, 20, 0.45);
         -webkit-app-region: drag;
         cursor: grab;
+      }
+      body[data-state='recording'] .vocsen-meter {
+        filter: drop-shadow(0 0 12px rgba(124, 255, 176, 0.34));
       }
       body[data-state='recording'] .wrap:active {
         cursor: grabbing;
@@ -22500,9 +22551,21 @@ const overlayHtml = () => `
         border-color: rgba(106, 167, 255, 0.35);
         box-shadow: 0 12px 30px rgba(22, 40, 78, 0.45);
       }
+      body[data-state='processing'] .vocsen-meter {
+        filter: drop-shadow(0 0 12px rgba(106, 167, 255, 0.28));
+      }
+      body[data-state='processing'] .vocsen-bar {
+        stroke: rgba(106, 167, 255, 0.94);
+      }
       body[data-state='done'] .wrap {
         border-color: rgba(165, 123, 255, 0.4);
         box-shadow: 0 12px 30px rgba(54, 24, 96, 0.45);
+      }
+      body[data-state='done'] .vocsen-meter {
+        filter: drop-shadow(0 0 12px rgba(165, 123, 255, 0.28));
+      }
+      body[data-state='done'] .vocsen-bar {
+        stroke: rgba(165, 123, 255, 0.94);
       }
       body[data-state='done'] .partial,
       body[data-state='processing'] .partial {
@@ -22528,24 +22591,46 @@ const overlayHtml = () => `
     <div class="wrap">
       <div class="mode" id="mode" data-empty="true"></div>
       <div class="wave-wrap">
-        <canvas id="wave" width="260" height="32"></canvas>
+        <svg class="vocsen-meter" viewBox="0 0 48 48" aria-hidden="true">
+          <defs>
+            <linearGradient id="vocsen-gradient" x1="0" y1="44.07" x2="0" y2="5.42" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#14b8a6" />
+              <stop offset="50%" stop-color="#10b981" />
+              <stop offset="100%" stop-color="#84cc16" />
+            </linearGradient>
+          </defs>
+          <line class="vocsen-bar" id="vocsen-bar-0" x1="6.22" y1="44.07" x2="6.22" y2="5.42" />
+          <line class="vocsen-bar" id="vocsen-bar-1" x1="13.23" y1="44.07" x2="13.23" y2="9.88" />
+          <line class="vocsen-bar" id="vocsen-bar-2" x1="20.23" y1="44.07" x2="20.23" y2="16.86" />
+          <line class="vocsen-bar" id="vocsen-bar-3" x1="27.46" y1="44.07" x2="27.46" y2="5.42" />
+          <line class="vocsen-bar" id="vocsen-bar-4" x1="34.46" y1="44.07" x2="34.46" y2="9.88" />
+          <line class="vocsen-bar" id="vocsen-bar-5" x1="41.46" y1="44.07" x2="41.46" y2="16.86" />
+        </svg>
       </div>
-      <div class="partial" id="partial" data-empty="true"></div>
       <div class="meta">
         <div class="timer" id="timer" data-visible="false">00:00</div>
         <div class="status" id="status">recording</div>
       </div>
+      <div class="partial" id="partial" data-empty="true"></div>
     </div>
     <script>
-      const canvas = document.getElementById('wave');
-      const ctx = canvas.getContext('2d');
       const statusEl = document.getElementById('status');
       const timerEl = document.getElementById('timer');
       const partialEl = document.getElementById('partial');
       const modeEl = document.getElementById('mode');
+      const meterBarEls = Array.from({ length: 6 }, (_, index) =>
+        document.getElementById(\`vocsen-bar-\${index}\`)
+      );
+      const meterBaseHeights = [38.65, 34.19, 27.21, 38.65, 34.19, 27.21];
+      const meterProfile = [1, 0.8846, 0.704, 1, 0.8846, 0.704];
+      const meterSeeds = [0.18, 0.54, 0.91, 1.27, 1.68, 2.03];
+      const meterBaselineY = 44.07;
+      const doneStatusLabel = ${JSON.stringify(getOverlayStatusLabel("done"))};
+      const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
       let phase = 0;
       let state = 'idle';
-      let wave = Array(32).fill(0);
+      let meterTargets = Array(meterBarEls.length).fill(0);
+      let meterDisplayed = Array(meterBarEls.length).fill(0);
       let partialText = '';
       let modeText = '';
       let timerAccumulatedMs = 0;
@@ -22606,7 +22691,7 @@ const overlayHtml = () => `
       const setState = (next) => {
         const previous = state;
         state = next;
-        statusEl.textContent = next;
+        statusEl.textContent = next === 'done' ? doneStatusLabel : next;
         document.body.dataset.state = next;
         if (next === 'recording') {
           timerVisible = true;
@@ -22621,11 +22706,12 @@ const overlayHtml = () => `
         }
       };
 
-      const setWave = (next) => {
+      const setLevels = (next) => {
         if (!Array.isArray(next) || next.length === 0) return;
-        wave = next.map((value) => {
+        meterTargets = meterBarEls.map((_, index) => {
+          const value = next[index];
           if (typeof value !== 'number' || Number.isNaN(value)) return 0;
-          return Math.max(-1, Math.min(1, value));
+          return clamp(value, 0, 1);
         });
       };
 
@@ -22650,52 +22736,78 @@ const overlayHtml = () => `
         }
       };
 
-      const draw = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.lineWidth = 3.2;
-        if (state === 'processing') ctx.strokeStyle = 'rgba(106, 167, 255, 0.95)';
-        else if (state === 'done') ctx.strokeStyle = 'rgba(165, 123, 255, 0.95)';
-        else ctx.strokeStyle = 'rgba(124, 255, 176, 1)';
+      const resolveBarActivity = (index) => {
+        if (state === 'recording') return meterDisplayed[index] ?? 0;
+        if (state === 'processing') {
+          return 0.18 + (Math.sin(phase * 0.36 + index * 0.82) + 1) * 0.08;
+        }
+        if (state === 'done') {
+          return 0.12 + (Math.sin(phase * 0.22 + index * 0.58) + 1) * 0.03;
+        }
+        return 0;
+      };
+
+      const resolveRecordingTarget = (index) => {
+        const current = meterTargets[index] ?? 0;
+        const left = meterTargets[index - 1] ?? current;
+        const right = meterTargets[index + 1] ?? current;
+        const contour = current - (left + right) / 2;
+        const ripple =
+          Math.sin(phase * (0.88 + index * 0.04) + meterSeeds[index]) * (0.02 + current * 0.1);
+        return clamp(current + contour * 0.22 + ripple, 0, 1);
+      };
+
+      const resolveBarScale = (index) => {
+        const profile = meterProfile[index] ?? 0.8;
+        const activity = resolveBarActivity(index);
         if (state === 'recording') {
-          ctx.shadowBlur = 12;
-          ctx.shadowColor = 'rgba(124, 255, 176, 0.65)';
-        } else if (state === 'processing') {
-          ctx.shadowBlur = 10;
-          ctx.shadowColor = 'rgba(106, 167, 255, 0.6)';
-        } else if (state === 'done') {
-          ctx.shadowBlur = 10;
-          ctx.shadowColor = 'rgba(165, 123, 255, 0.6)';
-        } else {
-          ctx.shadowBlur = 0;
+          const response = Math.pow(activity, 0.84);
+          const emphasis = 1 + ((index % 3) - 1) * 0.05;
+          return clamp(0.14 + profile * 0.09 + response * 0.72 * emphasis, 0.14, 1);
         }
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, 0, canvas.width, canvas.height);
-        ctx.clip();
-        ctx.beginPath();
-        const mid = canvas.height / 2;
-        const maxAbs = wave.reduce((acc, value) => Math.max(acc, Math.abs(value)), 0);
-        const maxAmp = Math.max(0, canvas.height / 2 - 3);
-        const amp =
-          state === 'recording' ? Math.min(maxAmp, 12 + maxAbs * 42) : 0;
-        for (let x = 0; x <= canvas.width; x += 3) {
-          const t = (x / canvas.width) * (wave.length - 1);
-          const idx = Math.floor(t);
-          const frac = t - idx;
-          const next = wave[Math.min(idx + 1, wave.length - 1)] ?? 0;
-          const value = (wave[idx] ?? 0) * (1 - frac) + next * frac;
-          const y = mid + value * amp + Math.sin((x / 22) + phase) * (amp * 0.32);
-          if (x === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+        if (state === 'processing') {
+          return clamp(0.26 + profile * 0.16 + activity * 0.28, 0.18, 0.78);
         }
-        ctx.stroke();
-        ctx.restore();
-        phase += 0.18;
+        if (state === 'done') {
+          return clamp(0.22 + profile * 0.14 + activity * 0.22, 0.18, 0.68);
+        }
+        return clamp(0.12 + profile * 0.08, 0.1, 0.34);
+      };
+
+      const draw = () => {
+        meterDisplayed = meterDisplayed.map((value, index) => {
+          const target = state === 'recording' ? resolveRecordingTarget(index) : 0;
+          const attack = state === 'recording' ? 0.82 + (index % 2) * 0.04 : 0.32;
+          const release = state === 'recording' ? 0.28 + (index % 3) * 0.03 : 0.2;
+          const smoothing = target > value ? attack : release;
+          return clamp(value + (target - value) * smoothing, 0, 1);
+        });
+
+        meterBarEls.forEach((barEl, index) => {
+          if (!barEl) return;
+          const scale = resolveBarScale(index);
+          const height = meterBaseHeights[index] * scale;
+          const y2 = meterBaselineY - height;
+          const activity = resolveBarActivity(index);
+          const opacity =
+            state === 'recording'
+              ? 0.52 + activity * 0.48
+              : state === 'processing'
+              ? 0.7 + activity * 0.18
+              : state === 'done'
+              ? 0.62 + activity * 0.12
+              : 0.42;
+          barEl.setAttribute('y1', String(meterBaselineY));
+          barEl.setAttribute('y2', y2.toFixed(2));
+          barEl.style.opacity = String(clamp(opacity, 0.35, 1));
+        });
+
+        phase += state === 'recording' ? 0.18 : 0.12;
         requestAnimationFrame(draw);
       };
 
       window.__setOverlayState = setState;
-      window.__setOverlayWave = setWave;
+      window.__setOverlayLevels = setLevels;
       window.__setOverlayText = setText;
       window.__setOverlayMode = setMode;
       syncTimer();
@@ -22709,13 +22821,27 @@ const syncOverlayInteractivity = () => {
   const draggable = isOverlayDraggableState(overlayState);
   overlayWindow.setIgnoreMouseEvents(!draggable, { forward: !draggable });
 };
+const positionOverlayWindowAtDefault = () => {
+  if (!overlayWindow || overlayWindow.isDestroyed()) return;
+  const [width] = overlayWindow.getSize();
+  const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize;
+  const x = Math.round((screenWidth - width) / 2);
+  const y = 24;
+  overlayWindow.setPosition(x, y);
+};
+const waitForOverlayReady = async () => {
+  if (overlayReady) return;
+  try {
+    await overlayLoadPromise;
+  } catch {
+  }
+};
 const ensureOverlayWindow = () => {
   if (overlayWindow) return;
   const width = 420;
-  const height = 150;
   overlayWindow = new BrowserWindow({
     width,
-    height,
+    height: 188,
     frame: false,
     resizable: false,
     transparent: true,
@@ -22732,17 +22858,25 @@ const ensureOverlayWindow = () => {
   });
   syncOverlayInteractivity();
   overlayWindow.setOpacity(0);
-  const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize;
-  const x = Math.round((screenWidth - width) / 2);
-  const y = 24;
-  overlayWindow.setPosition(x, y);
+  overlayReady = false;
+  overlayLoadPromise = new Promise((resolve2) => {
+    resolveOverlayLoad = resolve2;
+  });
+  positionOverlayWindowAtDefault();
   overlayWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(overlayHtml())}`);
   overlayWindow.on("closed", () => {
     overlayWindow = null;
     overlayReady = false;
+    overlayLoadPromise = null;
+    resolveOverlayLoad = null;
+    pendingOverlayLevels = null;
+    overlayLevelsFlushScheduled = false;
+    overlayLevelsFlushInFlight = false;
   });
   overlayWindow.webContents.on("did-finish-load", () => {
     overlayReady = true;
+    resolveOverlayLoad?.();
+    resolveOverlayLoad = null;
     if (overlayWindow && !overlayWindow.isDestroyed() && !overlayWindow.webContents.isDestroyed()) {
       overlayWindow.webContents.executeJavaScript(`window.__setOverlayState(${JSON.stringify(overlayState)})`).catch(() => void 0);
       if (overlayText) {
@@ -22756,6 +22890,9 @@ const ensureOverlayWindow = () => {
 };
 const updateOverlayState = async (state2) => {
   overlayState = state2;
+  if (state2 !== "recording") {
+    pendingOverlayLevels = null;
+  }
   syncOverlayInteractivity();
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
   if (overlayWindow.webContents.isDestroyed()) return;
@@ -22774,32 +22911,55 @@ const updateOverlayState = async (state2) => {
     }
   }
 };
-const updateOverlayWave = async (wave) => {
+const queueOverlayLevelsFlush = () => {
+  if (overlayLevelsFlushScheduled) return;
+  overlayLevelsFlushScheduled = true;
+  queueMicrotask(() => {
+    void flushOverlayLevels();
+  });
+};
+const flushOverlayLevels = async () => {
+  overlayLevelsFlushScheduled = false;
+  if (overlayLevelsFlushInFlight) return;
+  if (!hasPendingOverlayLevels()) return;
   if (!overlayWindow || overlayWindow.isDestroyed() || !overlayReady) return;
   if (overlayWindow.webContents.isDestroyed()) return;
   if (overlayState !== "recording") return;
-  try {
-    if (!overlayWindow.isVisible()) return;
-  } catch {
-    return;
+  if (shouldRequireVisibleWindowForOverlayChannel("levels")) {
+    try {
+      if (!overlayWindow.isVisible()) return;
+    } catch {
+      return;
+    }
   }
-  const now = Date.now();
-  if (now - lastWaveSentAt < 20) return;
-  lastWaveSentAt = now;
-  const script = `window.__setOverlayWave(${JSON.stringify(wave)})`;
+  const levels = pendingOverlayLevels;
+  pendingOverlayLevels = null;
+  overlayLevelsFlushInFlight = true;
+  const script = `window.__setOverlayLevels(${JSON.stringify(levels)})`;
   try {
     await overlayWindow.webContents.executeJavaScript(script);
   } catch {
+  } finally {
+    overlayLevelsFlushInFlight = false;
+    if (hasPendingOverlayLevels()) {
+      queueOverlayLevelsFlush();
+    }
   }
+};
+const updateOverlayLevels = (levels) => {
+  pendingOverlayLevels = levels;
+  queueOverlayLevelsFlush();
 };
 const updateOverlayText = async (text) => {
   overlayText = text;
   if (!overlayWindow || overlayWindow.isDestroyed() || !overlayReady) return;
   if (overlayWindow.webContents.isDestroyed()) return;
-  try {
-    if (!overlayWindow.isVisible()) return;
-  } catch {
-    return;
+  if (shouldRequireVisibleWindowForOverlayChannel("text")) {
+    try {
+      if (!overlayWindow.isVisible()) return;
+    } catch {
+      return;
+    }
   }
   const script = `window.__setOverlayText(${JSON.stringify(text)})`;
   try {
@@ -22811,10 +22971,12 @@ const updateOverlayMode = async (text) => {
   overlayMode = text;
   if (!overlayWindow || overlayWindow.isDestroyed() || !overlayReady) return;
   if (overlayWindow.webContents.isDestroyed()) return;
-  try {
-    if (!overlayWindow.isVisible()) return;
-  } catch {
-    return;
+  if (shouldRequireVisibleWindowForOverlayChannel("mode")) {
+    try {
+      if (!overlayWindow.isVisible()) return;
+    } catch {
+      return;
+    }
   }
   const script = `window.__setOverlayMode(${JSON.stringify(text)})`;
   try {
@@ -22954,7 +23116,8 @@ const macosAdapter = {
                 currentRecording.totalBytes += data.length;
               }
               const wave = computeWaveform(data);
-              void updateOverlayWave(wave);
+              const overlayLevels = mapWaveToVocsenOverlayLevels(wave);
+              void updateOverlayLevels(overlayLevels);
               return { data, timestamp: Date.now(), durationMs, rms: rawRms };
             };
             for await (const chunk of stream2) {
@@ -23061,8 +23224,18 @@ const macosAdapter = {
       if (!overlayWindow) return;
       if (state2 === "idle") {
         overlayText = "";
+        pendingOverlayLevels = null;
+        await waitForOverlayReady();
+        overlayWindow.setOpacity(0);
         overlayWindow.hide();
         return;
+      }
+      if (!overlayReady) {
+        await waitForOverlayReady();
+        if (!overlayWindow || overlayWindow.isDestroyed()) return;
+      }
+      if (state2 === "recording") {
+        positionOverlayWindowAtDefault();
       }
       await updateOverlayState(state2);
       if (overlayMode) {
@@ -23078,11 +23251,11 @@ const macosAdapter = {
       if (!overlayWindow.isDestroyed()) {
         overlayWindow.setOpacity(0);
         overlayWindow.hide();
-        overlayWindow.destroy();
       }
-      overlayWindow = null;
-      overlayReady = false;
       overlayText = "";
+      pendingOverlayLevels = null;
+      overlayLevelsFlushScheduled = false;
+      overlayLevelsFlushInFlight = false;
     },
     async setText(text) {
       const value = text ?? "";
@@ -37580,6 +37753,7 @@ const deleteOpenAiApiKey = async () => {
 let mainWindow = null;
 let speechSession = null;
 let recordingActive = false;
+let recordingStopInProgress = false;
 let streamingEnabled = true;
 let hotkeyAttached = false;
 let hotkeyHandle = null;
@@ -37587,10 +37761,9 @@ let toggleHandle = null;
 let cancelHandle = null;
 let changeModeHandle = null;
 const HOLD_START_DELAY_MS = 120;
-const PUSH_TO_TALK_GLOBAL_FALLBACK_DELAY_MS = 40;
+const MIN_PROCESSING_OVERLAY_MS = 700;
 let holdStartTimer = null;
 let holdKeyActive = false;
-let lastPushToTalkSignalAt = 0;
 const hotkeysEnabled = process.env.SUSURRARE_DISABLE_HOTKEYS !== "1";
 let updateTimer = null;
 let tray = null;
@@ -38302,9 +38475,11 @@ const startRecording = async () => {
   }
 };
 const stopRecording = async () => {
-  if (!recordingActive) return;
+  if (!recordingActive || recordingStopInProgress) return;
+  recordingStopInProgress = true;
   try {
     playSoundEffect("end");
+    const processingShownAt = Date.now();
     if (shouldShowOverlay()) {
       await platformAdapter.overlay.show("processing");
       await platformAdapter.overlay.setText("");
@@ -38316,6 +38491,12 @@ const stopRecording = async () => {
     lastOverlayPartial = "";
     await platformAdapter.audioCapture.stop();
     await speechSession?.finalize();
+    if (shouldShowOverlay()) {
+      const remainingProcessingMs = MIN_PROCESSING_OVERLAY_MS - (Date.now() - processingShownAt);
+      if (remainingProcessingMs > 0) {
+        await pause(remainingProcessingMs);
+      }
+    }
     if (shouldShowOverlay()) {
       await platformAdapter.overlay.show("done");
       if (overlayHideTimer) clearTimeout(overlayHideTimer);
@@ -38335,11 +38516,14 @@ const stopRecording = async () => {
       overlayHideTimer = null;
     }
     await platformAdapter.overlay.hide();
+  } finally {
+    recordingStopInProgress = false;
   }
 };
 const cancelRecording = async () => {
-  if (!recordingActive) return;
+  if (!recordingActive || recordingStopInProgress) return;
   try {
+    recordingStopInProgress = true;
     recordingActive = false;
     lastOverlayPartial = "";
     await platformAdapter.audioCapture.cancel();
@@ -38350,11 +38534,11 @@ const cancelRecording = async () => {
     }
     await platformAdapter.overlay.hide();
   } finally {
+    recordingStopInProgress = false;
     sendRecordingStatus("idle");
   }
 };
 const handlePushToTalkActive = (active) => {
-  lastPushToTalkSignalAt = Date.now();
   if (active) {
     holdKeyActive = true;
     if (recordingActive) return;
@@ -38418,13 +38602,14 @@ const attachLocalHotkeys = (win) => {
   hotkeyAttached = true;
   win.webContents.on("before-input-event", (event, input) => {
     if (input.isAutoRepeat) return;
+    const shouldHandleLocalPushToTalk = process.platform !== "darwin";
     if (input.type === "keyDown" || input.type === "keyUp") {
       if (input.type === "keyDown" && matchesShortcut(input, settings.toggleRecordingKey)) {
         event.preventDefault();
         triggerToggleRecording();
         return;
       }
-      if (matchesShortcut(input, settings.pushToTalkKey)) {
+      if (shouldHandleLocalPushToTalk && matchesShortcut(input, settings.pushToTalkKey)) {
         event.preventDefault();
         handlePushToTalkActive(input.type === "keyDown");
       } else if (input.type === "keyDown" && matchesShortcut(input, settings.changeModeShortcut)) {
@@ -38453,31 +38638,6 @@ const triggerToggleRecording = () => {
   } else {
     void startRecording();
   }
-};
-const triggerPushToTalkGlobalFallback = () => {
-  const firedAt = Date.now();
-  setTimeout(() => {
-    try {
-      const win = getMainWindow();
-      let isFocused = false;
-      if (win) {
-        try {
-          isFocused = win.isFocused();
-        } catch {
-          isFocused = false;
-        }
-      }
-      if (isFocused) return;
-      if (lastPushToTalkSignalAt >= firedAt) return;
-      if (holdStartTimer) {
-        clearTimeout(holdStartTimer);
-        holdStartTimer = null;
-      }
-      triggerToggleRecording();
-    } catch (error2) {
-      recordError(error2);
-    }
-  }, PUSH_TO_TALK_GLOBAL_FALLBACK_DELAY_MS);
 };
 const registerHotkeys = async () => {
   if (!hotkeysEnabled) return;
@@ -38513,9 +38673,6 @@ const registerHotkeys = async () => {
     recordError(error2);
     hotkeyHandle = null;
   }
-  registerGlobalShortcut(settings.pushToTalkKey, () => {
-    triggerPushToTalkGlobalFallback();
-  });
   registerGlobalShortcut(settings.toggleRecordingKey, () => {
     triggerToggleRecording();
   });
@@ -39133,8 +39290,11 @@ app.whenReady().then(async () => {
   applyLoginItemSettings();
   configureAutoUpdater();
   scheduleUpdateChecks();
+  if (!recordingActive && shouldShowOverlay()) {
+    await platformAdapter.overlay.show("idle").catch(() => void 0);
+  }
   createWindow();
-  if (!recordingActive) {
+  if (!recordingActive && !shouldShowOverlay()) {
     platformAdapter.overlay.hide().catch(() => void 0);
   }
   createTray();
@@ -39143,7 +39303,11 @@ app.whenReady().then(async () => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
     if (!recordingActive) {
-      platformAdapter.overlay.hide().catch(() => void 0);
+      if (shouldShowOverlay()) {
+        platformAdapter.overlay.show("idle").catch(() => void 0);
+      } else {
+        platformAdapter.overlay.hide().catch(() => void 0);
+      }
     }
   });
 });

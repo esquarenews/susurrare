@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { HistoryItem, PermissionStatus } from '@susurrare/core';
 import {
   DiagnosticsView,
@@ -208,15 +208,16 @@ export const App: React.FC = () => {
     setSettingsTargetSection(null);
   };
 
-  const handleHomeNavigate = (target: {
-    view: 'configuration' | 'modes' | 'vocabulary';
-    section?: 'keyboard-shortcuts';
-  }) => {
-    setActive(target.view);
-    setSettingsTargetSection(
-      target.view === 'configuration' ? target.section ?? null : null
-    );
-  };
+  const handleHomeNavigate = useCallback(
+    (target: {
+      view: 'configuration' | 'modes' | 'vocabulary';
+      section?: 'keyboard-shortcuts';
+    }) => {
+      setActive(target.view);
+      setSettingsTargetSection(target.view === 'configuration' ? target.section ?? null : null);
+    },
+    []
+  );
 
   const content = useMemo(() => {
     switch (active) {
@@ -253,8 +254,16 @@ export const App: React.FC = () => {
       <main className="app-main">
         <header className="top-bar">
           <div className="top-title">
-            <div className="brand-mark" aria-hidden="true" />
-            <span>Susurrare</span>
+            <img
+              src="./images/vocsen-mark.svg"
+              alt=""
+              className="brand-mark"
+              aria-hidden="true"
+            />
+            <div className="brand-copy">
+              <span className="brand-wordmark">vocsen</span>
+              <span className="brand-context">Desktop dictation layer</span>
+            </div>
           </div>
           <div className="top-actions">
             {missingPermissionCount > 0 && (

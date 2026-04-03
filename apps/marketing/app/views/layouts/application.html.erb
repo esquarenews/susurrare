@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title><%= content_for(:title) || "Vocsen" %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Vocsen">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta
+      name="description"
+      content="Vocsen is a cross-platform push-to-talk dictation layer. Hold a key, speak naturally, release to paste, and keep your voice consistent with modes, vocabulary, and shortcuts."
+    >
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+
+    <%= yield :head %>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap"
+      rel="stylesheet"
+    >
+    <meta name="theme-color" content="#000000">
+    <meta name="msapplication-TileColor" content="#000000">
+    <link rel="manifest" href="<%= pwa_manifest_path(format: :json) %>">
+    <link rel="icon" href="<%= asset_path("vocsen-favicon.svg") %>" type="image/svg+xml">
+    <link rel="icon" href="/favicon-32x32.png" sizes="32x32" type="image/png">
+    <link rel="icon" href="/favicon-16x16.png" sizes="16x16" type="image/png">
+    <link rel="shortcut icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+
+    <%# Includes all stylesheet files in app/assets/stylesheets %>
+    <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
+    <%= javascript_importmap_tags %>
+  </head>
+
+  <body>
+    <% if flash[:notice].present? || flash[:alert].present? %>
+      <div class="flash-stack">
+        <% if flash[:notice].present? %>
+          <div class="flash flash-notice"><%= flash[:notice] %></div>
+        <% end %>
+        <% if flash[:alert].present? %>
+          <div class="flash flash-alert"><%= flash[:alert] %></div>
+        <% end %>
+      </div>
+    <% end %>
+    <%= yield %>
+  </body>
+</html>

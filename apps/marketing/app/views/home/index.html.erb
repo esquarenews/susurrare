@@ -1,0 +1,368 @@
+<% content_for :title, "Vocsen | Push-to-talk dictation for real work" %>
+
+<main class="site-shell" data-controller="marketing">
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+  <div class="grain"></div>
+
+  <header class="site-header" id="top">
+    <nav class="site-nav">
+      <a class="brand-lockup" href="#top" aria-label="Vocsen home">
+        <%= image_tag "vocsen-mark.svg", alt: "", class: "brand-mark" %>
+        <span>vocsen</span>
+      </a>
+      <div class="site-links">
+        <a href="#features">Features</a>
+        <a href="#flow">Flow</a>
+        <a href="#modes">Modes</a>
+        <a href="#faq">FAQ</a>
+        <a href="#waitlist">Get the beta</a>
+      </div>
+    </nav>
+  </header>
+
+  <section class="hero" id="top">
+    <div class="hero-copy" data-reveal>
+      <p class="eyebrow">Cross-platform push-to-talk dictation</p>
+      <h1>Don't type. Speak in full clarity.</h1>
+      <p class="hero-body">
+        Vocsen is the dictation layer for modern work. Hold a key, speak naturally, release to paste.
+        Build modes for meetings, writing, or support and keep your voice consistent everywhere.
+      </p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="#waitlist">Get the macOS beta</a>
+        <a class="button button-secondary" href="#features">Explore features</a>
+      </div>
+      <div class="hero-metrics">
+        <div class="metric-card">
+          <strong>Hold</strong>
+          <span>Push-to-talk</span>
+        </div>
+        <div class="metric-card">
+          <strong>Stream</strong>
+          <span>Live transcription</span>
+        </div>
+        <div class="metric-card">
+          <strong>Release</strong>
+          <span>Instant paste</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-art" data-reveal data-marketing-target="parallax">
+      <div class="hero-stage">
+        <div class="hero-panel hero-panel-main">
+          <div class="panel-topline">
+            <span class="status-dot"></span>
+            <span>Recording</span>
+          </div>
+          <div class="panel-chips">
+            <span class="panel-chip">Streaming on</span>
+            <span class="panel-chip panel-chip-ghost">Meetings mode</span>
+          </div>
+          <div class="panel-bars">
+            <span class="bar bar-xl"></span>
+            <span class="bar bar-lg"></span>
+            <span class="bar bar-md"></span>
+            <span class="bar bar-xl solid"></span>
+            <span class="bar bar-lg solid"></span>
+            <span class="bar bar-md solid"></span>
+          </div>
+          <div class="panel-copy">
+            <p><strong>Mode</strong> Meetings</p>
+            <p><strong>Insert</strong> At cursor</p>
+            <p><strong>Prompt</strong> Summarize with action items, owners, and timeline.</p>
+          </div>
+        </div>
+
+        <div class="hero-panel hero-panel-float panel-left">
+          <span class="mini-label">Shortcut</span>
+          <strong>F15 hold to talk</strong>
+        </div>
+
+        <div class="hero-panel hero-panel-float panel-right">
+          <span class="mini-label">Vocabulary</span>
+          <strong>"NDA" -> "non-disclosure agreement"</strong>
+        </div>
+      </div>
+      <div class="hero-badges" data-reveal>
+        <span>Local history</span>
+        <span>Custom modes</span>
+        <span>Sound cues</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="brand-ribbon" data-reveal>
+    <div class="ribbon-shell">
+      <p class="ribbon-label">Works in the apps you already live in</p>
+      <div class="ribbon-track">
+        <span>Cursor</span>
+        <span>Slack</span>
+        <span>Notion</span>
+        <span>Gmail</span>
+        <span>Linear</span>
+        <span>Zoom</span>
+        <span>Cursor</span>
+        <span>Slack</span>
+        <span>Notion</span>
+        <span>Gmail</span>
+        <span>Linear</span>
+        <span>Zoom</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-grid" id="features">
+    <div class="section-copy" data-reveal>
+      <p class="eyebrow">Control layer</p>
+      <h2>Dictation that feels like a system, not a toy.</h2>
+      <p>
+        Configure shortcuts, modes, prompts, and output style once. Vocsen remembers the context so
+        every dictation sounds exactly how you want.
+      </p>
+      <ul class="feature-list">
+        <li>Push-to-talk, toggle recording, cancel, and mode switching hotkeys.</li>
+        <li>Streaming transcription or full accuracy, per mode.</li>
+        <li>Vocabulary plus shortcuts that speak your team's language.</li>
+      </ul>
+      <div class="feature-cta">
+        <a class="button button-primary" href="#waitlist">Request beta access</a>
+        <span class="muted">Mac beta available now. Windows-ready adapters are in progress.</span>
+      </div>
+    </div>
+
+    <div class="card-grid">
+      <article class="feature-card" data-reveal>
+        <p class="card-kicker">Capture</p>
+        <h3>Push-to-talk + toggle</h3>
+        <p>Hold to speak, tap to latch, cancel instantly. Remap every shortcut.</p>
+      </article>
+      <article class="feature-card" data-reveal>
+        <p class="card-kicker">Live</p>
+        <h3>Realtime streaming</h3>
+        <p>See words appear as you speak so you stay in flow.</p>
+      </article>
+      <article class="feature-card" data-reveal>
+        <p class="card-kicker">Prompted</p>
+        <h3>Mode prompts</h3>
+        <p>Attach custom instructions for writing, meetings, support, or coding.</p>
+      </article>
+      <article class="feature-card" data-reveal>
+        <p class="card-kicker">Language</p>
+        <h3>Vocabulary + shortcuts</h3>
+        <p>Teach Vocsen names, acronyms, phrases, and voice snippets.</p>
+      </article>
+      <article class="feature-card" data-reveal>
+        <p class="card-kicker">History</p>
+        <h3>Local history</h3>
+        <p>Keep recent dictations on-device and export what you need.</p>
+      </article>
+      <article class="feature-card" data-reveal>
+        <p class="card-kicker">Audio</p>
+        <h3>Sound + mic control</h3>
+        <p>Automatic gain, silence removal, and sound cues that keep you in rhythm.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="section-stack" id="flow">
+    <div class="section-heading" data-reveal>
+      <p class="eyebrow">How it works</p>
+      <h2>Three beats from thought to text.</h2>
+      <p>No app switching. No menus. Just a simple, repeatable rhythm.</p>
+    </div>
+
+    <div class="workflow">
+      <article class="workflow-step" data-reveal>
+        <span class="step-index">01</span>
+        <h3>Hold to speak</h3>
+        <p>Press your hotkey to start recording. Sound cues confirm you're live.</p>
+      </article>
+      <article class="workflow-step" data-reveal>
+        <span class="step-index">02</span>
+        <h3>Stream as you talk</h3>
+        <p>Streaming dictation keeps you in flow while Vocsen cleans up the text.</p>
+      </article>
+      <article class="workflow-step" data-reveal>
+        <span class="step-index">03</span>
+        <h3>Release to paste</h3>
+        <p>Insert at cursor or copy to clipboard, with formatting and punctuation rules.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="section-stack" id="modes">
+    <div class="section-heading" data-reveal>
+      <p class="eyebrow">Modes</p>
+      <h2>Modes tuned for speed, accuracy, and meetings.</h2>
+      <p>Switch context instantly. Every mode controls model, streaming, formatting, and vocabulary.</p>
+    </div>
+
+    <div class="mode-grid">
+      <article class="mode-card" data-reveal>
+        <h3>Fast</h3>
+        <p>Low-latency dictation for quick replies, chat, and rapid brainstorming.</p>
+        <div class="mode-meta">Streaming on - Plain text</div>
+      </article>
+      <article class="mode-card" data-reveal>
+        <h3>Accurate</h3>
+        <p>High-accuracy transcription for longer-form writing or critical notes.</p>
+        <div class="mode-meta">Formatting on - Markdown</div>
+      </article>
+      <article class="mode-card" data-reveal>
+        <h3>Meetings</h3>
+        <p>Multi-speaker diarization and structured output for clean meeting notes.</p>
+        <div class="mode-meta">Vocabulary set - Notes style</div>
+      </article>
+    </div>
+
+    <div class="mode-callout" data-reveal>
+      <div>
+        <h3>Design your own mode</h3>
+        <p>Choose insertion behavior, output style, prompts, shortcuts, and vocabulary scope per mode.</p>
+      </div>
+      <a class="button button-secondary" href="#waitlist">Build your workflow</a>
+    </div>
+  </section>
+
+  <section class="section-stack details-section">
+    <div class="detail-panel" data-reveal>
+      <div class="detail-header">
+        <div>
+          <p class="eyebrow">Fine-grained control</p>
+          <h2>Everything you need, nothing in your way.</h2>
+        </div>
+        <div class="detail-chips">
+          <span>Local-first</span>
+          <span>Configurable</span>
+          <span>Mac today</span>
+        </div>
+      </div>
+
+      <div class="detail-grid">
+        <article class="detail-item">
+          <h3>Configurable hotkeys</h3>
+          <p>Push-to-talk, toggle, cancel, and mode-switch shortcuts are fully customizable.</p>
+        </article>
+        <article class="detail-item">
+          <h3>Output styles</h3>
+          <p>Plain text, Markdown, or Slack markup with optional formatting commands.</p>
+        </article>
+        <article class="detail-item">
+          <h3>Language controls</h3>
+          <p>English or auto-detect transcription, plus restore-clipboard support.</p>
+        </article>
+        <article class="detail-item">
+          <h3>Local setup</h3>
+          <p>Your OpenAI API key is stored locally, and history stays on your machine.</p>
+        </article>
+        <article class="detail-item">
+          <h3>Sound feedback</h3>
+          <p>Enable sound effects, tune volume, and keep your flow with subtle cues.</p>
+        </article>
+        <article class="detail-item">
+          <h3>Windows-ready</h3>
+          <p>Built for macOS now with Windows-ready adapters waiting in the wings.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-stack" id="faq">
+    <div class="section-heading" data-reveal>
+      <p class="eyebrow">FAQ</p>
+      <h2>Questions, answered.</h2>
+      <p>Everything you need to know before you start talking.</p>
+    </div>
+
+    <div class="faq-list">
+      <details class="faq-item" open data-reveal>
+        <summary>Do I need my own OpenAI API key?</summary>
+        <div class="faq-answer">
+          <p>Yes. Vocsen uses your OpenAI API key for transcription and stores it locally on your machine.</p>
+        </div>
+      </details>
+      <details class="faq-item" data-reveal>
+        <summary>Can I switch hotkeys?</summary>
+        <div class="faq-answer">
+          <p>Yes. Push-to-talk, toggle recording, cancel, and mode switching are all configurable.</p>
+        </div>
+      </details>
+      <details class="faq-item" data-reveal>
+        <summary>Where does the text go?</summary>
+        <div class="faq-answer">
+          <p>Vocsen inserts at your cursor or copies to your clipboard, depending on your mode settings.</p>
+        </div>
+      </details>
+      <details class="faq-item" data-reveal>
+        <summary>Is Windows support available?</summary>
+        <div class="faq-answer">
+          <p>Windows support is in progress. The core is built with Windows-ready adapters.</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section class="waitlist-band" id="waitlist">
+    <div class="waitlist-copy" data-reveal>
+      <p class="eyebrow">Get early access</p>
+      <h2>Ready to speak your next draft?</h2>
+      <p>
+        Join the macOS beta and get the fastest way to turn voice into polished text, anywhere you
+        can type.
+      </p>
+      <p class="muted">No spam. We will only email you about the beta.</p>
+    </div>
+
+    <div class="waitlist-card" data-reveal>
+      <%= form_with model: @subscriber, url: subscribers_path, class: "waitlist-form" do |form| %>
+        <div class="field-group">
+          <%= form.label :name, "Name" %>
+          <%= form.text_field :name, required: true, autocomplete: "name" %>
+          <% if @subscriber.errors[:name].present? %>
+            <p class="field-error"><%= @subscriber.errors[:name].first %></p>
+          <% end %>
+        </div>
+
+        <div class="field-group">
+          <%= form.label :email, "Work email" %>
+          <%= form.email_field :email, required: true, autocomplete: "email" %>
+          <% if @subscriber.errors[:email].present? %>
+            <p class="field-error"><%= @subscriber.errors[:email].first %></p>
+          <% end %>
+        </div>
+
+        <div class="field-group">
+          <%= form.label :company, "Company" %>
+          <%= form.text_field :company, autocomplete: "organization" %>
+          <% if @subscriber.errors[:company].present? %>
+            <p class="field-error"><%= @subscriber.errors[:company].first %></p>
+          <% end %>
+        </div>
+
+        <%= form.submit "Request access", class: "button button-primary button-full" %>
+      <% end %>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <%= image_tag "vocsen-mark.svg", alt: "", class: "brand-mark" %>
+        <div>
+          <strong>Vocsen</strong>
+          <span>Push-to-talk dictation for real work.</span>
+        </div>
+      </div>
+      <div class="footer-links">
+        <a href="#features">Features</a>
+        <a href="#flow">Flow</a>
+        <a href="#modes">Modes</a>
+        <a href="#faq">FAQ</a>
+        <a href="#waitlist">Beta</a>
+      </div>
+      <div class="footer-meta">&copy; <%= Date.current.year %> Vocsen</div>
+    </div>
+  </footer>
+</main>

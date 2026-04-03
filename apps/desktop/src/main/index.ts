@@ -55,6 +55,7 @@ import { deleteOpenAiApiKey, loadOpenAiApiKey, saveOpenAiApiKey } from './keycha
 let mainWindow: BrowserWindow | null = null;
 let speechSession: ReturnType<typeof createSpeechToTextSession> | null = null;
 let recordingActive = false;
+let recordingStopInProgress = false;
 let streamingEnabled = true;
 let hotkeyAttached = false;
 let hotkeyHandle: { unregister: () => Promise<void> } | null = null;
@@ -62,10 +63,9 @@ let toggleHandle: { unregister: () => Promise<void> } | null = null;
 let cancelHandle: { unregister: () => Promise<void> } | null = null;
 let changeModeHandle: { unregister: () => Promise<void> } | null = null;
 const HOLD_START_DELAY_MS = 120;
-const PUSH_TO_TALK_GLOBAL_FALLBACK_DELAY_MS = 40;
+const MIN_PROCESSING_OVERLAY_MS = 700;
 let holdStartTimer: NodeJS.Timeout | null = null;
 let holdKeyActive = false;
-let lastPushToTalkSignalAt = 0;
 const hotkeysEnabled = process.env.SUSURRARE_DISABLE_HOTKEYS !== '1';
 let updateTimer: NodeJS.Timeout | null = null;
 let tray: Tray | null = null;
@@ -866,9 +866,11 @@ const startRecording = async () => {
 };
 
 const stopRecording = async () => {
-  if (!recordingActive) return;
+  if (!recordingActive || recordingStopInProgress) return;
+  recordingStopInProgress = true;
   try {
     playSoundEffect('end');
+    const processingShownAt = Date.now();
     if (shouldShowOverlay()) {
       await platformAdapter.overlay.show('processing');
       await platformAdapter.overlay.setText('');
@@ -880,6 +882,12 @@ const stopRecording = async () => {
     lastOverlayPartial = '';
     await platformAdapter.audioCapture.stop();
     await speechSession?.finalize();
+    if (shouldShowOverlay()) {
+      const remainingProcessingMs = MIN_PROCESSING_OVERLAY_MS - (Date.now() - processingShownAt);
+      if (remainingProcessingMs > 0) {
+        await pause(remainingProcessingMs);
+      }
+    }
     if (shouldShowOverlay()) {
       await platformAdapter.overlay.show('done');
       if (overlayHideTimer) clearTimeout(overlayHideTimer);
@@ -899,12 +907,15 @@ const stopRecording = async () => {
       overlayHideTimer = null;
     }
     await platformAdapter.overlay.hide();
+  } finally {
+    recordingStopInProgress = false;
   }
 };
 
 const cancelRecording = async () => {
-  if (!recordingActive) return;
+  if (!recordingActive || recordingStopInProgress) return;
   try {
+    recordingStopInProgress = true;
     recordingActive = false;
     lastOverlayPartial = '';
     await platformAdapter.audioCapture.cancel();
@@ -915,12 +926,12 @@ const cancelRecording = async () => {
     }
     await platformAdapter.overlay.hide();
   } finally {
+    recordingStopInProgress = false;
     sendRecordingStatus('idle');
   }
 };
 
 const handlePushToTalkActive = (active: boolean) => {
-  lastPushToTalkSignalAt = Date.now();
   if (active) {
     holdKeyActive = true;
     if (recordingActive) return;
@@ -987,13 +998,14 @@ const attachLocalHotkeys = (win: BrowserWindow) => {
   hotkeyAttached = true;
   win.webContents.on('before-input-event', (event, input) => {
     if (input.isAutoRepeat) return;
+    const shouldHandleLocalPushToTalk = process.platform !== 'darwin';
     if (input.type === 'keyDown' || input.type === 'keyUp') {
       if (input.type === 'keyDown' && matchesShortcut(input, settings.toggleRecordingKey)) {
         event.preventDefault();
         triggerToggleRecording();
         return;
       }
-      if (matchesShortcut(input, settings.pushToTalkKey)) {
+      if (shouldHandleLocalPushToTalk && matchesShortcut(input, settings.pushToTalkKey)) {
         event.preventDefault();
         handlePushToTalkActive(input.type === 'keyDown');
       } else if (input.type === 'keyDown' && matchesShortcut(input, settings.changeModeShortcut)) {
@@ -1024,32 +1036,6 @@ const triggerToggleRecording = () => {
   } else {
     void startRecording();
   }
-};
-
-const triggerPushToTalkGlobalFallback = () => {
-  const firedAt = Date.now();
-  setTimeout(() => {
-    try {
-      const win = getMainWindow();
-      let isFocused = false;
-      if (win) {
-        try {
-          isFocused = win.isFocused();
-        } catch {
-          isFocused = false;
-        }
-      }
-      if (isFocused) return;
-      if (lastPushToTalkSignalAt >= firedAt) return;
-      if (holdStartTimer) {
-        clearTimeout(holdStartTimer);
-        holdStartTimer = null;
-      }
-      triggerToggleRecording();
-    } catch (error) {
-      recordError(error);
-    }
-  }, PUSH_TO_TALK_GLOBAL_FALLBACK_DELAY_MS);
 };
 
 const registerHotkeys = async () => {
@@ -1087,14 +1073,10 @@ const registerHotkeys = async () => {
     hotkeyHandle = null;
   }
 
-  // Keep hold-to-talk on the low-level hook and add a global fallback for when the
-  // app is unfocused and no hold signal is observed.
-  registerGlobalShortcut(settings.pushToTalkKey, () => {
-    triggerPushToTalkGlobalFallback();
-  });
+  // Hold-to-talk must stay on the low-level hook only. Electron global shortcuts
+  // do not expose key-up, so a fallback here degrades into toggle behavior.
 
   // These actions are edge-triggered and work reliably with Electron's global shortcuts.
-  // Avoid relying on low-level hooks for these paths.
   registerGlobalShortcut(settings.toggleRecordingKey, () => {
     triggerToggleRecording();
   });
@@ -1765,8 +1747,11 @@ app.whenReady().then(async () => {
   applyLoginItemSettings();
   configureAutoUpdater();
   scheduleUpdateChecks();
+  if (!recordingActive && shouldShowOverlay()) {
+    await platformAdapter.overlay.show('idle').catch(() => undefined);
+  }
   createWindow();
-  if (!recordingActive) {
+  if (!recordingActive && !shouldShowOverlay()) {
     platformAdapter.overlay.hide().catch(() => undefined);
   }
   createTray();
@@ -1776,7 +1761,11 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
     if (!recordingActive) {
-      platformAdapter.overlay.hide().catch(() => undefined);
+      if (shouldShowOverlay()) {
+        platformAdapter.overlay.show('idle').catch(() => undefined);
+      } else {
+        platformAdapter.overlay.hide().catch(() => undefined);
+      }
     }
   });
 });
