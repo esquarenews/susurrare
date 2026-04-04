@@ -214,7 +214,10 @@ const eventToShortcut = (event: React.KeyboardEvent<HTMLInputElement>) => {
   return formatShortcut(modifiers, main.value);
 };
 
-const StatusBanner: React.FC<{ status: StatusState }> = ({ status }) => {
+const StatusBanner: React.FC<{ status: StatusState; floating?: boolean }> = ({
+  status,
+  floating = false,
+}) => {
   const message = status.text;
   const [visible, setVisible] = useState(false);
 
@@ -231,7 +234,7 @@ const StatusBanner: React.FC<{ status: StatusState }> = ({ status }) => {
   }, [message, status.nonce]);
 
   return (
-    <div className="status-banner-slot">
+    <div className={`status-banner-slot${floating ? '' : ' status-banner-slot-inline'}`}>
       <div
         key={`${message ?? 'empty'}-${status.nonce}`}
         className={`status-banner${message ? '' : ' is-empty'}${visible ? '' : ' is-hidden'}`}
@@ -1482,6 +1485,13 @@ export const ModesView: React.FC = () => {
     setEditingName('');
   }, [selectedModeId]);
 
+  useEffect(() => {
+    if (!selectedModeId) return;
+    if (modes.some((mode) => mode.id === selectedModeId)) return;
+    if (!modes.length) return;
+    setSelectedModeId(null);
+  }, [modes, selectedModeId]);
+
   const scheduleModeSave = (mode: Mode) => {
     if (autosaveTimers.current[mode.id]) {
       clearTimeout(autosaveTimers.current[mode.id]);
@@ -1588,9 +1598,6 @@ export const ModesView: React.FC = () => {
   };
 
   const selectedMode = selectedModeId ? modes.find((mode) => mode.id === selectedModeId) : null;
-  if (selectedModeId && !selectedMode && modes.length) {
-    setSelectedModeId(null);
-  }
 
   const modelLabel = (mode: Mode) => {
     if (mode.model.selection === 'fast') return 'Fast';

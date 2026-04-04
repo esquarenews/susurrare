@@ -10983,7 +10983,10 @@ const eventToShortcut = (event) => {
   if (event.metaKey) modifiers.push("Cmd");
   return formatShortcut(modifiers, main.value);
 };
-const StatusBanner = ({ status }) => {
+const StatusBanner = ({
+  status,
+  floating = false
+}) => {
   const message = status.text;
   const [visible, setVisible] = reactExports.useState(false);
   reactExports.useEffect(() => {
@@ -10997,7 +11000,7 @@ const StatusBanner = ({ status }) => {
     }, 5e3);
     return () => clearTimeout(timer);
   }, [message, status.nonce]);
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "status-banner-slot", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `status-banner-slot${floating ? "" : " status-banner-slot-inline"}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
     {
       className: `status-banner${message ? "" : " is-empty"}${visible ? "" : " is-hidden"}`,
@@ -12065,6 +12068,12 @@ const ModesView = () => {
     setEditingModeId(null);
     setEditingName("");
   }, [selectedModeId]);
+  reactExports.useEffect(() => {
+    if (!selectedModeId) return;
+    if (modes.some((mode) => mode.id === selectedModeId)) return;
+    if (!modes.length) return;
+    setSelectedModeId(null);
+  }, [modes, selectedModeId]);
   const scheduleModeSave = (mode) => {
     if (autosaveTimers.current[mode.id]) {
       clearTimeout(autosaveTimers.current[mode.id]);
@@ -12161,9 +12170,6 @@ const ModesView = () => {
     }
   };
   const selectedMode = selectedModeId ? modes.find((mode) => mode.id === selectedModeId) : null;
-  if (selectedModeId && !selectedMode && modes.length) {
-    setSelectedModeId(null);
-  }
   const modelLabel = (mode) => {
     if (mode.model.selection === "fast") return "Fast";
     if (mode.model.selection === "accurate") return "Accurate";
