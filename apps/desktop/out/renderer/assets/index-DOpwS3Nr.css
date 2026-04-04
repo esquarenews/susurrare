@@ -1921,17 +1921,6 @@ textarea {
   pointer-events: none;
 }
 
-.status-banner-slot-inline {
-  position: relative;
-  left: auto;
-  bottom: auto;
-  transform: none;
-  width: min(520px, 100%);
-  max-width: 100%;
-  z-index: auto;
-  pointer-events: none;
-}
-
 .status-banner {
   background: color-mix(in srgb, var(--surface-strong) 96%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
@@ -1981,11 +1970,6 @@ textarea {
 .status-banner.is-hidden {
   opacity: 0;
   transform: translateY(8px);
-}
-
-.status-banner-slot-inline .status-banner.is-empty,
-.status-banner-slot-inline .status-banner.is-hidden {
-  display: none;
 }
 
 .status-banner:not(.is-empty)::before {

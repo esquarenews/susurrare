@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type { HistoryItem, PermissionStatus } from '@susurrare/core';
 import {
   DiagnosticsView,
@@ -26,12 +26,6 @@ const NAV_ITEMS = [
 ] as const;
 
 export type NavId = (typeof NAV_ITEMS)[number]['id'];
-
-type RecordingBannerState = {
-  text: string | null;
-  nonce: number;
-  tone: 'neutral' | 'error';
-};
 
 const countWords = (text: string) => {
   const trimmed = text.trim();
@@ -90,37 +84,6 @@ const getMissingPermissionCount = (permissions: PermissionStatus | null) => {
   return count;
 };
 
-const FloatingStatusBanner: React.FC<{ banner: RecordingBannerState }> = ({ banner }) => {
-  const message = banner.text;
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    if (!message) {
-      setVisible(false);
-      return;
-    }
-    setVisible(true);
-    const timer = setTimeout(() => {
-      setVisible(false);
-    }, 6000);
-    return () => clearTimeout(timer);
-  }, [message, banner.nonce]);
-
-  return (
-    <div className="status-banner-slot">
-      <div
-        key={`${message ?? 'empty'}-${banner.nonce}`}
-        className={`status-banner${message ? '' : ' is-empty'}${visible ? '' : ' is-hidden'}${
-          banner.tone === 'error' ? ' is-error' : ''
-        }`}
-        aria-hidden={!message}
-      >
-        {message ?? '\u00A0'}
-      </div>
-    </div>
-  );
-};
-
 export const App: React.FC = () => {
   const [active, setActive] = useState<NavId>('home');
   const [settingsTargetSection, setSettingsTargetSection] = useState<'keyboard-shortcuts' | null>(
@@ -129,11 +92,6 @@ export const App: React.FC = () => {
   const [recordingStatus, setRecordingStatus] = useState<
     'idle' | 'recording' | 'processing' | 'error'
   >('idle');
-  const [recordingBanner, setRecordingBanner] = useState<RecordingBannerState>({
-    text: null,
-    nonce: 0,
-    tone: 'neutral',
-  });
   const [permissions, setPermissions] = useState<PermissionStatus | null>(null);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const homeStats = useMemo(() => computeHomeStats(historyItems), [historyItems]);
@@ -141,8 +99,6 @@ export const App: React.FC = () => {
     () => getMissingPermissionCount(permissions),
     [permissions]
   );
-  const previousStatusRef = useRef<typeof recordingStatus>('idle');
-
   useEffect(() => {
     const applyTheme = (value: 'light' | 'dark' | 'system') => {
       const root = document.documentElement;
@@ -161,18 +117,9 @@ export const App: React.FC = () => {
   useEffect(() => {
     const unsubscribe = window.susurrare.onRecordingStatus((event) => {
       setRecordingStatus(event.status);
-      setRecordingBanner({
-        text: event.message ?? null,
-        nonce: event.timestamp,
-        tone: event.status === 'error' ? 'error' : 'neutral',
-      });
     });
     return () => unsubscribe();
   }, []);
-
-  useEffect(() => {
-    previousStatusRef.current = recordingStatus;
-  }, [recordingStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -290,7 +237,6 @@ export const App: React.FC = () => {
           </div>
         </header>
         <section className="content">{content}</section>
-        <FloatingStatusBanner banner={recordingBanner} />
       </main>
     </div>
   );

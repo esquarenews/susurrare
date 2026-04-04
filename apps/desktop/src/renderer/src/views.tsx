@@ -214,10 +214,7 @@ const eventToShortcut = (event: React.KeyboardEvent<HTMLInputElement>) => {
   return formatShortcut(modifiers, main.value);
 };
 
-const StatusBanner: React.FC<{ status: StatusState; floating?: boolean }> = ({
-  status,
-  floating = false,
-}) => {
+const StatusBanner: React.FC<{ status: StatusState }> = ({ status }) => {
   const message = status.text;
   const [visible, setVisible] = useState(false);
 
@@ -234,7 +231,7 @@ const StatusBanner: React.FC<{ status: StatusState; floating?: boolean }> = ({
   }, [message, status.nonce]);
 
   return (
-    <div className={`status-banner-slot${floating ? '' : ' status-banner-slot-inline'}`}>
+    <div className="status-banner-slot">
       <div
         key={`${message ?? 'empty'}-${status.nonce}`}
         className={`status-banner${message ? '' : ' is-empty'}${visible ? '' : ' is-hidden'}`}

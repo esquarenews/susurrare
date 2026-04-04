@@ -1,6 +1,3 @@
-function getDefaultExportFromCjs(x2) {
-  return x2 && x2.__esModule && Object.prototype.hasOwnProperty.call(x2, "default") ? x2["default"] : x2;
-}
 var jsxRuntime = { exports: {} };
 var reactJsxRuntime_production_min = {};
 var react = { exports: {} };
@@ -266,7 +263,6 @@ react_production_min.version = "18.3.1";
   react.exports = react_production_min;
 }
 var reactExports = react.exports;
-const React = /* @__PURE__ */ getDefaultExportFromCjs(reactExports);
 /**
  * @license React
  * react-jsx-runtime.production.min.js
@@ -10983,10 +10979,7 @@ const eventToShortcut = (event) => {
   if (event.metaKey) modifiers.push("Cmd");
   return formatShortcut(modifiers, main.value);
 };
-const StatusBanner = ({
-  status,
-  floating = false
-}) => {
+const StatusBanner = ({ status }) => {
   const message = status.text;
   const [visible, setVisible] = reactExports.useState(false);
   reactExports.useEffect(() => {
@@ -11000,7 +10993,7 @@ const StatusBanner = ({
     }, 5e3);
     return () => clearTimeout(timer);
   }, [message, status.nonce]);
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `status-banner-slot${floating ? "" : " status-banner-slot-inline"}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "status-banner-slot", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
     {
       className: `status-banner${message ? "" : " is-empty"}${visible ? "" : " is-hidden"}`,
@@ -13301,41 +13294,12 @@ const getMissingPermissionCount = (permissions) => {
   if (permissions.microphone !== "granted") count += 1;
   return count;
 };
-const FloatingStatusBanner = ({ banner }) => {
-  const message = banner.text;
-  const [visible, setVisible] = reactExports.useState(false);
-  reactExports.useEffect(() => {
-    if (!message) {
-      setVisible(false);
-      return;
-    }
-    setVisible(true);
-    const timer = setTimeout(() => {
-      setVisible(false);
-    }, 6e3);
-    return () => clearTimeout(timer);
-  }, [message, banner.nonce]);
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "status-banner-slot", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      className: `status-banner${message ? "" : " is-empty"}${visible ? "" : " is-hidden"}${banner.tone === "error" ? " is-error" : ""}`,
-      "aria-hidden": !message,
-      children: message ?? " "
-    },
-    `${message ?? "empty"}-${banner.nonce}`
-  ) });
-};
 const App = () => {
   const [active, setActive] = reactExports.useState("home");
   const [settingsTargetSection, setSettingsTargetSection] = reactExports.useState(
     null
   );
   const [recordingStatus, setRecordingStatus] = reactExports.useState("idle");
-  const [recordingBanner, setRecordingBanner] = reactExports.useState({
-    text: null,
-    nonce: 0,
-    tone: "neutral"
-  });
   const [permissions, setPermissions] = reactExports.useState(null);
   const [historyItems, setHistoryItems] = reactExports.useState([]);
   const homeStats = reactExports.useMemo(() => computeHomeStats(historyItems), [historyItems]);
@@ -13343,7 +13307,6 @@ const App = () => {
     () => getMissingPermissionCount(permissions),
     [permissions]
   );
-  const previousStatusRef = reactExports.useRef("idle");
   reactExports.useEffect(() => {
     const applyTheme = (value) => {
       const root2 = document.documentElement;
@@ -13358,17 +13321,9 @@ const App = () => {
   reactExports.useEffect(() => {
     const unsubscribe = window.susurrare.onRecordingStatus((event) => {
       setRecordingStatus(event.status);
-      setRecordingBanner({
-        text: event.message ?? null,
-        nonce: event.timestamp,
-        tone: event.status === "error" ? "error" : "neutral"
-      });
     });
     return () => unsubscribe();
   }, []);
-  reactExports.useEffect(() => {
-    previousStatusRef.current = recordingStatus;
-  }, [recordingStatus]);
   reactExports.useEffect(() => {
     let cancelled = false;
     const loadPermissions = () => {
@@ -13463,14 +13418,11 @@ const App = () => {
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "icon-button", "aria-label": "Profile", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "avatar", children: "ER" }) })
         ] })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("section", { className: "content", children: content }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(FloatingStatusBanner, { banner: recordingBanner })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("section", { className: "content", children: content })
     ] })
   ] });
 };
 const root = document.getElementById("root");
 if (root) {
-  createRoot(root).render(
-    /* @__PURE__ */ jsxRuntimeExports.jsx(React.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })
-  );
+  createRoot(root).render(/* @__PURE__ */ jsxRuntimeExports.jsx(App, {}));
 }
