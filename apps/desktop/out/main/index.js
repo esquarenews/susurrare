@@ -1,4 +1,4 @@
-import require$$1$3, { clipboard, systemPreferences, BrowserWindow, screen, app, safeStorage, ipcMain, shell, session, powerMonitor, nativeTheme, globalShortcut, Tray, Menu, nativeImage } from "electron";
+import require$$1$3, { clipboard, systemPreferences, BrowserWindow, screen, app, safeStorage, ipcMain, session, powerMonitor, nativeTheme, globalShortcut, shell, Tray, nativeImage, Menu } from "electron";
 import require$$1$4, { execFile, spawn } from "child_process";
 import require$$1, { join } from "path";
 import require$$0$3, { existsSync, readFileSync as readFileSync$1, writeFileSync as writeFileSync$1, mkdirSync, createWriteStream, unlinkSync } from "fs";
@@ -22272,6 +22272,68 @@ const buildStatsSummaryPromptInput = (payload, styleHint) => {
     styleHint
   };
 };
+const resolveTrayIconVariant = (theme, systemDark) => {
+  const effectiveTheme = theme === "system" ? systemDark ? "dark" : "light" : theme;
+  return effectiveTheme === "dark" ? "dark" : "light";
+};
+const getTrayStatusLabel = (recordingState) => {
+  switch (recordingState) {
+    case "recording":
+      return "Recording now";
+    case "processing":
+      return "Processing recording";
+    case "error":
+      return "Ready after error";
+    case "idle":
+    default:
+      return "Ready to record";
+  }
+};
+const buildTrayMenuModel = (options) => {
+  const { appName, recordingState, windowVisible } = options;
+  const canStart = recordingState === "idle" || recordingState === "error";
+  const canStop = recordingState === "recording";
+  return [
+    {
+      type: "status",
+      id: "status",
+      label: getTrayStatusLabel(recordingState),
+      enabled: false
+    },
+    {
+      type: "action",
+      id: "toggle-window",
+      label: `${windowVisible ? "Hide" : "Show"} ${appName}`,
+      enabled: true
+    },
+    {
+      type: "action",
+      id: "start-recording",
+      label: "Start recording",
+      enabled: canStart
+    },
+    {
+      type: "action",
+      id: "stop-recording",
+      label: "Stop recording",
+      enabled: canStop
+    },
+    { type: "separator", id: "separator-main" },
+    {
+      type: "action",
+      id: "help",
+      label: "Help",
+      enabled: true
+    },
+    { type: "separator", id: "separator-quit" },
+    {
+      type: "action",
+      id: "quit",
+      label: `Quit ${appName}`,
+      enabled: true
+    }
+  ];
+};
 const isOverlayDraggableState = (state2) => state2 === "recording";
 const getOverlayStatusLabel = (state2) => state2 === "done" ? "idle" : state2;
 const shouldRequireVisibleWindowForOverlayChannel = (channel) => channel === "levels";
@@ -37815,9 +37877,11 @@ let lastOverlayPartial = "";
 const suppressionHotkeys = /* @__PURE__ */ new Set();
 let lastSoundAt = 0;
 let silenceStopRequested = false;
+let trayRecordingState = "idle";
 const SILENCE_RMS_THRESHOLD = 0.012;
 const RECORDING_LIMIT_WARNING_WINDOW_MS = 6e4;
 const RECORDING_LIMIT_MIN_WARNING_MS = 5e3;
+const APP_BRAND_NAME = "Vocsen";
 const SOUND_WARM_STALE_AFTER_MS = 1e3 * 60 * 6;
 const SOUND_WARM_MIN_INTERVAL_MS = 800;
 const SOUND_WARM_MAINTENANCE_INTERVAL_MS = 1e3 * 60 * 2;
@@ -38038,7 +38102,10 @@ const createWindow = () => {
       mainWindow = null;
     }
     hotkeyAttached = false;
+    updateTrayMenu();
   });
+  win.on("show", updateTrayMenu);
+  win.on("hide", updateTrayMenu);
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (event, url) => {
     if (isAllowedRendererNavigation(url, devServerOrigin)) return;
@@ -38051,6 +38118,7 @@ const createWindow = () => {
   }
   attachLocalHotkeys(win);
   sendRecordingStatus("idle");
+  updateTrayMenu();
 };
 const applyLoginItemSettings = () => {
   if (process.platform !== "darwin") return;
@@ -38082,12 +38150,6 @@ const scheduleUpdateChecks = () => {
 };
 const applyThemeSource = () => {
   nativeTheme.themeSource = settings.theme ?? "system";
-};
-const getEffectiveTheme = (theme) => {
-  if (theme === "system") {
-    return nativeTheme.shouldUseDarkColors ? "dark" : "light";
-  }
-  return theme;
 };
 let startSoundPath = null;
 let endSoundPath = null;
@@ -38171,13 +38233,14 @@ const playSoundEffect = (kind) => {
     recordError(error2);
   }
 };
+const getTrayThemePreference = () => process.platform === "darwin" ? "system" : settings.theme ?? "system";
 const resolveTrayIconPath = (theme) => {
-  const effectiveTheme = getEffectiveTheme(theme);
-  const iconName = effectiveTheme === "dark" ? "tray-dark.png" : "tray-light.png";
+  const variant = resolveTrayIconVariant(theme, nativeTheme.shouldUseDarkColors);
+  const iconName = `tray-${variant}.png`;
   const basePath = app.isPackaged ? process.resourcesPath : app.getAppPath();
   const iconPath = join(basePath, "resources", "tray", iconName);
   if (existsSync(iconPath)) return iconPath;
-  const fallbackName = effectiveTheme === "dark" ? "tray-light.png" : "tray-dark.png";
+  const fallbackName = variant === "dark" ? "tray-light.png" : "tray-dark.png";
   const fallbackPath = join(basePath, "resources", "tray", fallbackName);
   return existsSync(fallbackPath) ? fallbackPath : iconPath;
 };
@@ -38186,17 +38249,82 @@ const createTrayImage = (theme) => {
   const image = nativeImage.createFromPath(iconPath);
   if (image.isEmpty()) return image;
   const resized = image.resize({ width: 18, height: 18 });
-  if (process.platform === "darwin") {
-    resized.setTemplateImage(true);
-  }
   return resized;
 };
 const updateTrayIcon = () => {
   if (!tray) return;
-  const image = createTrayImage(settings.theme ?? "system");
+  const image = createTrayImage(getTrayThemePreference());
   if (!image.isEmpty()) {
     tray.setImage(image);
   }
+};
+const getTrayWindowVisible = () => {
+  const win = getMainWindow();
+  if (!win) return false;
+  try {
+    return win.isVisible();
+  } catch {
+    return false;
+  }
+};
+const openHelpPage = async (sectionId) => {
+  const url = resolveHelpUrl(sectionId);
+  try {
+    await shell.openExternal(url);
+    return true;
+  } catch (error2) {
+    recordError(error2);
+    return false;
+  }
+};
+const buildTrayContextMenu = () => {
+  const template = buildTrayMenuModel({
+    appName: APP_BRAND_NAME,
+    recordingState: trayRecordingState,
+    windowVisible: getTrayWindowVisible()
+  }).map((entry) => {
+    if (entry.type === "separator") {
+      return { type: "separator" };
+    }
+    if (entry.type === "status") {
+      return { label: entry.label, enabled: false };
+    }
+    switch (entry.id) {
+      case "toggle-window":
+        return { label: entry.label, enabled: entry.enabled, click: toggleMainWindow };
+      case "start-recording":
+        return {
+          label: entry.label,
+          enabled: entry.enabled,
+          click: () => {
+            void startRecording();
+          }
+        };
+      case "stop-recording":
+        return {
+          label: entry.label,
+          enabled: entry.enabled,
+          click: () => {
+            void stopRecording();
+          }
+        };
+      case "help":
+        return {
+          label: entry.label,
+          enabled: entry.enabled,
+          click: () => {
+            void openHelpPage();
+          }
+        };
+      case "quit":
+        return { label: entry.label, enabled: entry.enabled, click: () => app.quit() };
+    }
+  });
+  return Menu.buildFromTemplate(template);
+};
+const updateTrayMenu = () => {
+  if (!tray) return;
+  tray.setContextMenu(buildTrayContextMenu());
 };
 const toggleMainWindow = () => {
   const win = getMainWindow();
@@ -38211,24 +38339,20 @@ const toggleMainWindow = () => {
       win.show();
       win.focus();
     }
+    updateTrayMenu();
   } catch (error2) {
     recordError(error2);
     mainWindow = null;
     hotkeyAttached = false;
+    updateTrayMenu();
   }
 };
 const createTray = () => {
   if (tray) return;
-  tray = new Tray(createTrayImage(settings.theme ?? "system"));
-  tray.setToolTip("Susurrare");
+  tray = new Tray(createTrayImage(getTrayThemePreference()));
+  tray.setToolTip(APP_BRAND_NAME);
   tray.on("click", toggleMainWindow);
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: "Show Susurrare", click: toggleMainWindow },
-      { type: "separator" },
-      { label: "Quit Susurrare", click: () => app.quit() }
-    ])
-  );
+  updateTrayMenu();
 };
 const sanitizeHelpSectionId = (value) => {
   const sanitized = sanitizeMaybeString(value, 64, true);
@@ -38295,6 +38419,8 @@ const wrapEnvelope = (payload) => ({
   payload
 });
 const sendRecordingStatus = (status, message) => {
+  trayRecordingState = status;
+  updateTrayMenu();
   const win = getMainWindow();
   if (!win) return;
   try {
@@ -39124,14 +39250,8 @@ ipcMain.handle(IpcChannels.settingsSet, async (_event, envelope) => {
 });
 ipcMain.handle(IpcChannels.helpOpen, async (_event, envelope) => {
   const sectionId = envelope && envelope.version === IPC_VERSION ? isRecord(envelope.payload) ? sanitizeHelpSectionId(envelope.payload.sectionId) : sanitizeHelpSectionId(envelope.payload) : null;
-  const url = resolveHelpUrl(sectionId);
-  try {
-    await shell.openExternal(url);
-    return wrapEnvelope({ ok: true });
-  } catch (error2) {
-    recordError(error2);
-    return wrapEnvelope({ ok: false });
-  }
+  const ok2 = await openHelpPage(sectionId);
+  return wrapEnvelope({ ok: ok2 });
 });
 ipcMain.handle(IpcChannels.appInfo, async () => {
   return wrapEnvelope(

@@ -12,7 +12,7 @@ import {
   systemPreferences,
   powerMonitor,
 } from 'electron';
-import type { Input } from 'electron';
+import type { Input, MenuItemConstructorOptions } from 'electron';
 import { execFile, spawn } from 'child_process';
 import { join } from 'path';
 import { existsSync, writeFileSync } from 'fs';
@@ -34,7 +34,9 @@ import {
   createTranscriptionClient,
   estimateSafeOpenAiTranscriptionDurationMs,
   buildStatsSummaryPromptInput,
+  buildTrayMenuModel,
   maskApiKeyForRenderer,
+  resolveTrayIconVariant,
   resolveRecordingSilenceTimeoutMs,
   resolveRecordingStreamingEnabled,
   stripApiKeyFromSettings,
@@ -47,6 +49,7 @@ import {
   HistoryExportSchema,
   AppInfoSchema,
   shouldWarmSoundPlayer,
+  type TrayRecordingState,
 } from '@susurrare/core';
 import { platformAdapter } from './platform';
 import { loadState, saveState } from './store';
@@ -76,9 +79,11 @@ let lastOverlayPartial = '';
 const suppressionHotkeys = new Set<string>();
 let lastSoundAt = 0;
 let silenceStopRequested = false;
+let trayRecordingState: TrayRecordingState = 'idle';
 const SILENCE_RMS_THRESHOLD = 0.012;
 const RECORDING_LIMIT_WARNING_WINDOW_MS = 60_000;
 const RECORDING_LIMIT_MIN_WARNING_MS = 5_000;
+const APP_BRAND_NAME = 'Vocsen';
 const SOUND_WARM_STALE_AFTER_MS = 1000 * 60 * 6;
 const SOUND_WARM_MIN_INTERVAL_MS = 800;
 const SOUND_WARM_MAINTENANCE_INTERVAL_MS = 1000 * 60 * 2;
@@ -344,7 +349,10 @@ const createWindow = () => {
       mainWindow = null;
     }
     hotkeyAttached = false;
+    updateTrayMenu();
   });
+  win.on('show', updateTrayMenu);
+  win.on('hide', updateTrayMenu);
 
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event, url) => {
@@ -359,6 +367,7 @@ const createWindow = () => {
   }
   attachLocalHotkeys(win);
   sendRecordingStatus('idle');
+  updateTrayMenu();
 };
 
 const applyLoginItemSettings = () => {
@@ -394,13 +403,6 @@ const scheduleUpdateChecks = () => {
 
 const applyThemeSource = () => {
   nativeTheme.themeSource = settings.theme ?? 'system';
-};
-
-const getEffectiveTheme = (theme: 'light' | 'dark' | 'system') => {
-  if (theme === 'system') {
-    return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
-  }
-  return theme;
 };
 
 let startSoundPath: string | null = null;
@@ -493,13 +495,16 @@ const playSoundEffect = (kind: 'start' | 'end') => {
   }
 };
 
+const getTrayThemePreference = (): 'light' | 'dark' | 'system' =>
+  process.platform === 'darwin' ? 'system' : settings.theme ?? 'system';
+
 const resolveTrayIconPath = (theme: 'light' | 'dark' | 'system') => {
-  const effectiveTheme = getEffectiveTheme(theme);
-  const iconName = effectiveTheme === 'dark' ? 'tray-dark.png' : 'tray-light.png';
+  const variant = resolveTrayIconVariant(theme, nativeTheme.shouldUseDarkColors);
+  const iconName = `tray-${variant}.png`;
   const basePath = app.isPackaged ? process.resourcesPath : app.getAppPath();
   const iconPath = join(basePath, 'resources', 'tray', iconName);
   if (existsSync(iconPath)) return iconPath;
-  const fallbackName = effectiveTheme === 'dark' ? 'tray-light.png' : 'tray-dark.png';
+  const fallbackName = variant === 'dark' ? 'tray-light.png' : 'tray-dark.png';
   const fallbackPath = join(basePath, 'resources', 'tray', fallbackName);
   return existsSync(fallbackPath) ? fallbackPath : iconPath;
 };
@@ -509,18 +514,87 @@ const createTrayImage = (theme: 'light' | 'dark' | 'system') => {
   const image = nativeImage.createFromPath(iconPath);
   if (image.isEmpty()) return image;
   const resized = image.resize({ width: 18, height: 18 });
-  if (process.platform === 'darwin') {
-    resized.setTemplateImage(true);
-  }
   return resized;
 };
 
 const updateTrayIcon = () => {
   if (!tray) return;
-  const image = createTrayImage(settings.theme ?? 'system');
+  const image = createTrayImage(getTrayThemePreference());
   if (!image.isEmpty()) {
     tray.setImage(image);
   }
+};
+
+const getTrayWindowVisible = () => {
+  const win = getMainWindow();
+  if (!win) return false;
+  try {
+    return win.isVisible();
+  } catch {
+    return false;
+  }
+};
+
+const openHelpPage = async (sectionId?: string | null) => {
+  const url = resolveHelpUrl(sectionId);
+  try {
+    await shell.openExternal(url);
+    return true;
+  } catch (error) {
+    recordError(error);
+    return false;
+  }
+};
+
+const buildTrayContextMenu = () => {
+  const template: MenuItemConstructorOptions[] = buildTrayMenuModel({
+    appName: APP_BRAND_NAME,
+    recordingState: trayRecordingState,
+    windowVisible: getTrayWindowVisible(),
+  }).map((entry) => {
+    if (entry.type === 'separator') {
+      return { type: 'separator' };
+    }
+    if (entry.type === 'status') {
+      return { label: entry.label, enabled: false };
+    }
+    switch (entry.id) {
+      case 'toggle-window':
+        return { label: entry.label, enabled: entry.enabled, click: toggleMainWindow };
+      case 'start-recording':
+        return {
+          label: entry.label,
+          enabled: entry.enabled,
+          click: () => {
+            void startRecording();
+          },
+        };
+      case 'stop-recording':
+        return {
+          label: entry.label,
+          enabled: entry.enabled,
+          click: () => {
+            void stopRecording();
+          },
+        };
+      case 'help':
+        return {
+          label: entry.label,
+          enabled: entry.enabled,
+          click: () => {
+            void openHelpPage();
+          },
+        };
+      case 'quit':
+        return { label: entry.label, enabled: entry.enabled, click: () => app.quit() };
+    }
+  });
+  return Menu.buildFromTemplate(template);
+};
+
+const updateTrayMenu = () => {
+  if (!tray) return;
+  tray.setContextMenu(buildTrayContextMenu());
 };
 
 const toggleMainWindow = () => {
@@ -536,25 +610,21 @@ const toggleMainWindow = () => {
       win.show();
       win.focus();
     }
+    updateTrayMenu();
   } catch (error) {
     recordError(error);
     mainWindow = null;
     hotkeyAttached = false;
+    updateTrayMenu();
   }
 };
 
 const createTray = () => {
   if (tray) return;
-  tray = new Tray(createTrayImage(settings.theme ?? 'system'));
-  tray.setToolTip('Susurrare');
+  tray = new Tray(createTrayImage(getTrayThemePreference()));
+  tray.setToolTip(APP_BRAND_NAME);
   tray.on('click', toggleMainWindow);
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: 'Show Susurrare', click: toggleMainWindow },
-      { type: 'separator' },
-      { label: 'Quit Susurrare', click: () => app.quit() },
-    ])
-  );
+  updateTrayMenu();
 };
 
 const sanitizeHelpSectionId = (value: unknown) => {
@@ -630,6 +700,8 @@ const sendRecordingStatus = (
   status: 'idle' | 'recording' | 'processing' | 'error',
   message?: string
 ) => {
+  trayRecordingState = status;
+  updateTrayMenu();
   const win = getMainWindow();
   if (!win) return;
   try {
@@ -1524,14 +1596,8 @@ ipcMain.handle(IpcChannels.helpOpen, async (_event, envelope) => {
         ? sanitizeHelpSectionId((envelope.payload as JsonRecord).sectionId)
         : sanitizeHelpSectionId(envelope.payload)
       : null;
-  const url = resolveHelpUrl(sectionId);
-  try {
-    await shell.openExternal(url);
-    return wrapEnvelope({ ok: true });
-  } catch (error) {
-    recordError(error);
-    return wrapEnvelope({ ok: false });
-  }
+  const ok = await openHelpPage(sectionId);
+  return wrapEnvelope({ ok });
 });
 
 ipcMain.handle(IpcChannels.appInfo, async () => {

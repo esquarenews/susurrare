@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="vocsen-tray-dark-top" x1="12" y1="24" x2="52" y2="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7be7d5"/>
+      <stop offset="0.52" stop-color="#54db95"/>
+      <stop offset="1" stop-color="#b6ec4b"/>
+    </linearGradient>
+    <linearGradient id="vocsen-tray-dark-bottom" x1="12" y1="40" x2="42" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#56e0c8"/>
+      <stop offset="0.52" stop-color="#35cf86"/>
+      <stop offset="1" stop-color="#91dd33"/>
+    </linearGradient>
+  </defs>
+  <line x1="12" y1="24" x2="52" y2="24" stroke="url(#vocsen-tray-dark-top)" stroke-width="8" stroke-linecap="round"/>
+  <line x1="12" y1="40" x2="42" y2="40" stroke="url(#vocsen-tray-dark-bottom)" stroke-width="8" stroke-linecap="round"/>
+</svg>

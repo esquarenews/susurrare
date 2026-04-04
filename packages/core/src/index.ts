@@ -15,3 +15,4 @@ export * from './security/settings';
 export * from './speechToText/types';
 export * from './speechToText/session';
 export * from './stats/summary';
+export * from './tray';
