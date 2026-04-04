@@ -275,10 +275,10 @@ const overlayHtml = () => `
       .wrap {
         width: 100%;
         height: 100%;
-        padding: 10px 18px 12px;
+        padding: 8px 16px 10px;
         box-sizing: border-box;
         display: grid;
-        gap: 4px;
+        gap: 3px;
         align-content: start;
         justify-items: center;
         background: rgba(10, 14, 18, 0.7);
@@ -305,15 +305,15 @@ const overlayHtml = () => `
         animation: modePulse 0.7s ease;
       }
       .wave-wrap {
-        width: 108px;
-        height: 72px;
+        width: 122px;
+        height: 82px;
         display: grid;
         place-items: center;
       }
       .vocsen-meter {
         display: block;
-        width: 88px;
-        height: 68px;
+        width: 102px;
+        height: 78px;
         overflow: visible;
         transition: filter 0.35s ease, opacity 0.35s ease;
       }
@@ -333,7 +333,7 @@ const overlayHtml = () => `
       }
       .meta {
         width: 100%;
-        max-width: 360px;
+        max-width: 336px;
         display: flex;
         justify-content: center;
         align-items: center;
@@ -356,7 +356,7 @@ const overlayHtml = () => `
         opacity: 0.7;
         width: 100%;
         justify-self: stretch;
-        max-width: 360px;
+        max-width: 336px;
         max-height: calc(1.35em * 2.7);
         min-height: 0;
         white-space: normal;
@@ -683,10 +683,10 @@ const waitForOverlayReady = async () => {
 
 const ensureOverlayWindow = () => {
   if (overlayWindow) return;
-  const width = 420;
+  const width = 396;
   overlayWindow = new BrowserWindow({
     width,
-    height: 188,
+    height: 182,
     frame: false,
     resizable: false,
     transparent: true,
