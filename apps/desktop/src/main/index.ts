@@ -35,6 +35,7 @@ import {
   estimateSafeOpenAiTranscriptionDurationMs,
   buildStatsSummaryPromptInput,
   buildTrayMenuModel,
+  getTrayIconLookupPaths,
   maskApiKeyForRenderer,
   resolveTrayIconVariant,
   resolveRecordingSilenceTimeoutMs,
@@ -500,13 +501,11 @@ const getTrayThemePreference = (): 'light' | 'dark' | 'system' =>
 
 const resolveTrayIconPath = (theme: 'light' | 'dark' | 'system') => {
   const variant = resolveTrayIconVariant(theme, nativeTheme.shouldUseDarkColors);
-  const iconName = `tray-${variant}.png`;
-  const basePath = app.isPackaged ? process.resourcesPath : app.getAppPath();
-  const iconPath = join(basePath, 'resources', 'tray', iconName);
-  if (existsSync(iconPath)) return iconPath;
-  const fallbackName = variant === 'dark' ? 'tray-light.png' : 'tray-dark.png';
-  const fallbackPath = join(basePath, 'resources', 'tray', fallbackName);
-  return existsSync(fallbackPath) ? fallbackPath : iconPath;
+  const roots = app.isPackaged ? [process.resourcesPath, app.getAppPath()] : [app.getAppPath()];
+  const candidates = roots.flatMap((root) =>
+    getTrayIconLookupPaths(variant).map((relativePath) => join(root, relativePath))
+  );
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
 };
 
 const createTrayImage = (theme: 'light' | 'dark' | 'system') => {

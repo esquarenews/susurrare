@@ -22276,6 +22276,15 @@ const resolveTrayIconVariant = (theme, systemDark) => {
   const effectiveTheme = theme === "system" ? systemDark ? "dark" : "light" : theme;
   return effectiveTheme === "dark" ? "dark" : "light";
 };
+const getTrayIconLookupPaths = (variant) => {
+  const fallbackVariant = variant === "dark" ? "light" : "dark";
+  return [
+    `tray/tray-${variant}.png`,
+    `resources/tray/tray-${variant}.png`,
+    `tray/tray-${fallbackVariant}.png`,
+    `resources/tray/tray-${fallbackVariant}.png`
+  ];
+};
 const getTrayStatusLabel = (recordingState) => {
   switch (recordingState) {
     case "recording":
@@ -38241,13 +38250,11 @@ const playSoundEffect = (kind) => {
 const getTrayThemePreference = () => process.platform === "darwin" ? "system" : settings.theme ?? "system";
 const resolveTrayIconPath = (theme) => {
   const variant = resolveTrayIconVariant(theme, nativeTheme.shouldUseDarkColors);
-  const iconName = `tray-${variant}.png`;
-  const basePath = app.isPackaged ? process.resourcesPath : app.getAppPath();
-  const iconPath = join(basePath, "resources", "tray", iconName);
-  if (existsSync(iconPath)) return iconPath;
-  const fallbackName = variant === "dark" ? "tray-light.png" : "tray-dark.png";
-  const fallbackPath = join(basePath, "resources", "tray", fallbackName);
-  return existsSync(fallbackPath) ? fallbackPath : iconPath;
+  const roots = app.isPackaged ? [process.resourcesPath, app.getAppPath()] : [app.getAppPath()];
+  const candidates = roots.flatMap(
+    (root2) => getTrayIconLookupPaths(variant).map((relativePath) => join(root2, relativePath))
+  );
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
 };
 const createTrayImage = (theme) => {
   const iconPath = resolveTrayIconPath(theme);

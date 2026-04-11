@@ -28,6 +28,16 @@ export const resolveTrayIconVariant = (
   return effectiveTheme === 'dark' ? 'dark' : 'light';
 };
 
+export const getTrayIconLookupPaths = (variant: TrayIconVariant) => {
+  const fallbackVariant = variant === 'dark' ? 'light' : 'dark';
+  return [
+    `tray/tray-${variant}.png`,
+    `resources/tray/tray-${variant}.png`,
+    `tray/tray-${fallbackVariant}.png`,
+    `resources/tray/tray-${fallbackVariant}.png`,
+  ];
+};
+
 const getTrayStatusLabel = (recordingState: TrayRecordingState) => {
   switch (recordingState) {
     case 'recording':

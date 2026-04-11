@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTrayMenuModel, resolveTrayIconVariant } from '../../core/src';
+import { buildTrayMenuModel, getTrayIconLookupPaths, resolveTrayIconVariant } from '../../core/src';
 
 describe('tray helpers', () => {
   it('selects the correct tray icon variant for theme and system appearance', () => {
@@ -7,6 +7,15 @@ describe('tray helpers', () => {
     expect(resolveTrayIconVariant('system', true)).toBe('dark');
     expect(resolveTrayIconVariant('light', true)).toBe('light');
     expect(resolveTrayIconVariant('dark', false)).toBe('dark');
+  });
+
+  it('checks packaged and development tray icon paths before falling back', () => {
+    expect(getTrayIconLookupPaths('dark')).toEqual([
+      'tray/tray-dark.png',
+      'resources/tray/tray-dark.png',
+      'tray/tray-light.png',
+      'resources/tray/tray-light.png',
+    ]);
   });
 
   it('enables start and stop actions only when they make sense', () => {
