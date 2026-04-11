@@ -2,6 +2,7 @@ import { createRequire } from 'module';
 import { execFile } from 'child_process';
 import { BrowserWindow, clipboard, screen, systemPreferences } from 'electron';
 import {
+  getOverlayDefaultPosition,
   getOverlayStatusLabel,
   isOverlayDraggableState,
   mapWaveToVocsenOverlayLevels,
@@ -666,9 +667,9 @@ const syncOverlayInteractivity = () => {
 const positionOverlayWindowAtDefault = () => {
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
   const [width] = overlayWindow.getSize();
-  const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize;
-  const x = Math.round((screenWidth - width) / 2);
-  const y = 24;
+  const cursorPoint = screen.getCursorScreenPoint();
+  const { workArea } = screen.getDisplayNearestPoint(cursorPoint);
+  const { x, y } = getOverlayDefaultPosition(workArea, width);
   overlayWindow.setPosition(x, y);
 };
 
@@ -701,6 +702,7 @@ const ensureOverlayWindow = () => {
       sandbox: true,
     },
   });
+  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   syncOverlayInteractivity();
   overlayWindow.setOpacity(0);
   overlayReady = false;

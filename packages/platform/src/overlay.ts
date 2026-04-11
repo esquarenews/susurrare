@@ -11,6 +11,22 @@ export const getOverlayStatusLabel = (state: OverlayDisplayState) =>
 export const shouldRequireVisibleWindowForOverlayChannel = (channel: OverlayWindowChannel) =>
   channel === 'levels';
 
+export type OverlayWorkArea = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export const getOverlayDefaultPosition = (
+  workArea: OverlayWorkArea,
+  overlayWidth: number,
+  topMargin = 24
+) => ({
+  x: Math.round(workArea.x + (workArea.width - overlayWidth) / 2),
+  y: Math.round(workArea.y + topMargin),
+});
+
 export const VOCSEN_OVERLAY_BAR_PROFILE = [1, 0.8846, 0.704, 1, 0.8846, 0.704] as const;
 
 export const mapWaveToVocsenOverlayLevels = (

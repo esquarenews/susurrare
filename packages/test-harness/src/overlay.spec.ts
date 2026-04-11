@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   VOCSEN_OVERLAY_BAR_PROFILE,
+  getOverlayDefaultPosition,
   getOverlayStatusLabel,
   isOverlayDraggableState,
   mapWaveToVocsenOverlayLevels,
@@ -26,6 +27,13 @@ describe('overlay interaction policy', () => {
     expect(shouldRequireVisibleWindowForOverlayChannel('levels')).toBe(true);
     expect(shouldRequireVisibleWindowForOverlayChannel('text')).toBe(false);
     expect(shouldRequireVisibleWindowForOverlayChannel('mode')).toBe(false);
+  });
+
+  it('anchors the overlay to the current display work area instead of the primary screen origin', () => {
+    expect(getOverlayDefaultPosition({ x: 1512, y: 25, width: 1728, height: 1080 }, 396)).toEqual({
+      x: 2178,
+      y: 49,
+    });
   });
 
   it('maps voice energy into one normalized level per Vocsen bar', () => {

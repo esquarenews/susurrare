@@ -22337,6 +22337,10 @@ const buildTrayMenuModel = (options) => {
 const isOverlayDraggableState = (state2) => state2 === "recording";
 const getOverlayStatusLabel = (state2) => state2 === "done" ? "idle" : state2;
 const shouldRequireVisibleWindowForOverlayChannel = (channel) => channel === "levels";
+const getOverlayDefaultPosition = (workArea, overlayWidth, topMargin = 24) => ({
+  x: Math.round(workArea.x + (workArea.width - overlayWidth) / 2),
+  y: Math.round(workArea.y + topMargin)
+});
 const VOCSEN_OVERLAY_BAR_PROFILE = [1, 0.8846, 0.704, 1, 0.8846, 0.704];
 const mapWaveToVocsenOverlayLevels = (wave, bars = VOCSEN_OVERLAY_BAR_PROFILE.length) => {
   if (!Number.isFinite(bars) || bars <= 0) return [];
@@ -22928,9 +22932,9 @@ const syncOverlayInteractivity = () => {
 const positionOverlayWindowAtDefault = () => {
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
   const [width] = overlayWindow.getSize();
-  const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize;
-  const x = Math.round((screenWidth - width) / 2);
-  const y = 24;
+  const cursorPoint = screen.getCursorScreenPoint();
+  const { workArea } = screen.getDisplayNearestPoint(cursorPoint);
+  const { x, y } = getOverlayDefaultPosition(workArea, width);
   overlayWindow.setPosition(x, y);
 };
 const waitForOverlayReady = async () => {
@@ -22960,6 +22964,7 @@ const ensureOverlayWindow = () => {
       sandbox: true
     }
   });
+  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   syncOverlayInteractivity();
   overlayWindow.setOpacity(0);
   overlayReady = false;
