@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="176" y1="140" x2="848" y2="884" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F6FBF8"/>
+      <stop offset="0.58" stop-color="#E4EFEA"/>
+      <stop offset="1" stop-color="#D6E3DE"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="260" y1="160" x2="740" y2="844" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.9"/>
+      <stop offset="0.3" stop-color="#FFFFFF" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="barTop" x1="286" y1="420" x2="742" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14B8A6"/>
+      <stop offset="0.52" stop-color="#10B981"/>
+      <stop offset="1" stop-color="#84CC16"/>
+    </linearGradient>
+    <linearGradient id="barBottom" x1="286" y1="592" x2="668" y2="592" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14B8A6"/>
+      <stop offset="0.52" stop-color="#10B981"/>
+      <stop offset="1" stop-color="#84CC16"/>
+    </linearGradient>
+    <filter id="shadow" x="96" y="96" width="832" height="832" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feOffset dy="28"/>
+      <feGaussianBlur stdDeviation="36"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.047 0 0 0 0 0.098 0 0 0 0 0.086 0 0 0 0.18 0"/>
+    </filter>
+    <filter id="barShadow" x="214" y="318" width="600" height="344" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feOffset dy="18"/>
+      <feGaussianBlur stdDeviation="18"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.051 0 0 0 0 0.161 0 0 0 0 0.125 0 0 0 0.22 0"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#shadow)">
+    <rect x="136" y="108" width="752" height="752" rx="178" fill="url(#bg)"/>
+  </g>
+  <rect x="136" y="108" width="752" height="752" rx="178" fill="url(#shine)" opacity="0.55"/>
+  <rect x="136.5" y="108.5" width="751" height="751" rx="177.5" stroke="rgba(112, 145, 131, 0.18)"/>
+
+  <g filter="url(#barShadow)">
+    <line x1="286" y1="420" x2="742" y2="420" stroke="url(#barTop)" stroke-width="98" stroke-linecap="round"/>
+    <line x1="286" y1="592" x2="668" y2="592" stroke="url(#barBottom)" stroke-width="98" stroke-linecap="round"/>
+  </g>
+</svg>

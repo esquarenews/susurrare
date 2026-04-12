@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildTrayMenuModel, getTrayIconLookupPaths, resolveTrayIconVariant } from '../../core/src';
+import {
+  buildTrayMenuModel,
+  getDockIconLookupPaths,
+  getTrayIconLookupPaths,
+  getTrayPrimaryClickBehavior,
+  resolveTrayIconVariant,
+} from '../../core/src';
 
 describe('tray helpers', () => {
   it('selects the correct tray icon variant for theme and system appearance', () => {
@@ -16,6 +22,19 @@ describe('tray helpers', () => {
       'tray/tray-light.png',
       'resources/tray/tray-light.png',
     ]);
+  });
+
+  it('uses a dedicated dock icon lookup order and opens the tray menu on click for macOS', () => {
+    expect(getDockIconLookupPaths()).toEqual([
+      'resources/app-icon.png',
+      'build/icon.png',
+      'out/renderer/images/icon-susarrare-light.png',
+      'out/renderer/images/icon-susarrare-dark.png',
+      'resources/tray/tray-light.png',
+      'resources/tray/tray-dark.png',
+    ]);
+    expect(getTrayPrimaryClickBehavior('darwin')).toBe('open-menu');
+    expect(getTrayPrimaryClickBehavior('win32')).toBe('toggle-window');
   });
 
   it('enables start and stop actions only when they make sense', () => {

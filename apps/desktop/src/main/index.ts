@@ -35,7 +35,9 @@ import {
   estimateSafeOpenAiTranscriptionDurationMs,
   buildStatsSummaryPromptInput,
   buildTrayMenuModel,
+  getDockIconLookupPaths,
   getTrayIconLookupPaths,
+  getTrayPrimaryClickBehavior,
   maskApiKeyForRenderer,
   resolveTrayIconVariant,
   resolveRecordingSilenceTimeoutMs,
@@ -516,6 +518,25 @@ const createTrayImage = (theme: 'light' | 'dark' | 'system') => {
   return resized;
 };
 
+const resolveDockIconPath = () => {
+  const roots = app.isPackaged ? [app.getAppPath(), process.resourcesPath] : [app.getAppPath()];
+  const candidates = roots.flatMap((root) =>
+    getDockIconLookupPaths().map((relativePath) => join(root, relativePath))
+  );
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+};
+
+const updateDockIcon = () => {
+  if (process.platform !== 'darwin') return;
+  const dock = app.dock;
+  if (!dock) return;
+  const image = nativeImage.createFromPath(resolveDockIconPath());
+  if (!image.isEmpty()) {
+    dock.setIcon(image);
+  }
+  dock.show();
+};
+
 const updateTrayIcon = () => {
   if (!tray) return;
   const image = createTrayImage(getTrayThemePreference());
@@ -593,6 +614,7 @@ const buildTrayContextMenu = () => {
 
 const updateTrayMenu = () => {
   if (!tray) return;
+  if (getTrayPrimaryClickBehavior(process.platform) === 'open-menu') return;
   tray.setContextMenu(buildTrayContextMenu());
 };
 
@@ -622,8 +644,17 @@ const createTray = () => {
   if (tray) return;
   tray = new Tray(createTrayImage(getTrayThemePreference()));
   tray.setToolTip(APP_BRAND_NAME);
-  tray.on('click', toggleMainWindow);
-  updateTrayMenu();
+  if (getTrayPrimaryClickBehavior(process.platform) === 'open-menu') {
+    const popUpMenu = () => {
+      if (!tray) return;
+      tray.popUpContextMenu(buildTrayContextMenu());
+    };
+    tray.on('click', popUpMenu);
+    tray.on('right-click', popUpMenu);
+  } else {
+    tray.on('click', toggleMainWindow);
+    updateTrayMenu();
+  }
 };
 
 const sanitizeHelpSectionId = (value: unknown) => {
@@ -1812,6 +1843,7 @@ app.whenReady().then(async () => {
   updatePipelineContext();
   initSpeechSession();
   applyThemeSource();
+  updateDockIcon();
   void registerHotkeys();
   applyLoginItemSettings();
   configureAutoUpdater();

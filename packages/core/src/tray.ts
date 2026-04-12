@@ -1,6 +1,7 @@
 export type TrayRecordingState = 'idle' | 'recording' | 'processing' | 'error';
 export type TrayThemePreference = 'light' | 'dark' | 'system';
 export type TrayIconVariant = 'light' | 'dark';
+export type TrayPrimaryClickBehavior = 'toggle-window' | 'open-menu';
 
 export type TrayMenuEntry =
   | {
@@ -37,6 +38,18 @@ export const getTrayIconLookupPaths = (variant: TrayIconVariant) => {
     `resources/tray/tray-${fallbackVariant}.png`,
   ];
 };
+
+export const getDockIconLookupPaths = () => [
+  'resources/app-icon.png',
+  'build/icon.png',
+  'out/renderer/images/icon-susarrare-light.png',
+  'out/renderer/images/icon-susarrare-dark.png',
+  'resources/tray/tray-light.png',
+  'resources/tray/tray-dark.png',
+];
+
+export const getTrayPrimaryClickBehavior = (platform: NodeJS.Platform | string): TrayPrimaryClickBehavior =>
+  platform === 'darwin' ? 'open-menu' : 'toggle-window';
 
 const getTrayStatusLabel = (recordingState: TrayRecordingState) => {
   switch (recordingState) {

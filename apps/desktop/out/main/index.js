@@ -1,4 +1,4 @@
-import require$$1$3, { clipboard, systemPreferences, BrowserWindow, screen, app, safeStorage, ipcMain, session, powerMonitor, nativeTheme, globalShortcut, shell, Tray, nativeImage, Menu } from "electron";
+import require$$1$3, { clipboard, systemPreferences, BrowserWindow, screen, app, safeStorage, ipcMain, session, powerMonitor, nativeTheme, globalShortcut, shell, nativeImage, Tray, Menu } from "electron";
 import require$$1$4, { execFile, spawn } from "child_process";
 import require$$1, { join } from "path";
 import require$$0$3, { existsSync, readFileSync as readFileSync$1, writeFileSync as writeFileSync$1, mkdirSync, createWriteStream, unlinkSync } from "fs";
@@ -22285,6 +22285,15 @@ const getTrayIconLookupPaths = (variant) => {
     `resources/tray/tray-${fallbackVariant}.png`
   ];
 };
+const getDockIconLookupPaths = () => [
+  "resources/app-icon.png",
+  "build/icon.png",
+  "out/renderer/images/icon-susarrare-light.png",
+  "out/renderer/images/icon-susarrare-dark.png",
+  "resources/tray/tray-light.png",
+  "resources/tray/tray-dark.png"
+];
+const getTrayPrimaryClickBehavior = (platform2) => platform2 === "darwin" ? "open-menu" : "toggle-window";
 const getTrayStatusLabel = (recordingState) => {
   switch (recordingState) {
     case "recording":
@@ -38263,6 +38272,23 @@ const createTrayImage = (theme) => {
   const resized = image.resize({ width: 18, height: 18 });
   return resized;
 };
+const resolveDockIconPath = () => {
+  const roots = app.isPackaged ? [app.getAppPath(), process.resourcesPath] : [app.getAppPath()];
+  const candidates = roots.flatMap(
+    (root2) => getDockIconLookupPaths().map((relativePath) => join(root2, relativePath))
+  );
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
+};
+const updateDockIcon = () => {
+  if (process.platform !== "darwin") return;
+  const dock = app.dock;
+  if (!dock) return;
+  const image = nativeImage.createFromPath(resolveDockIconPath());
+  if (!image.isEmpty()) {
+    dock.setIcon(image);
+  }
+  dock.show();
+};
 const updateTrayIcon = () => {
   if (!tray) return;
   const image = createTrayImage(getTrayThemePreference());
@@ -38336,6 +38362,7 @@ const buildTrayContextMenu = () => {
 };
 const updateTrayMenu = () => {
   if (!tray) return;
+  if (getTrayPrimaryClickBehavior(process.platform) === "open-menu") return;
   tray.setContextMenu(buildTrayContextMenu());
 };
 const toggleMainWindow = () => {
@@ -38363,8 +38390,17 @@ const createTray = () => {
   if (tray) return;
   tray = new Tray(createTrayImage(getTrayThemePreference()));
   tray.setToolTip(APP_BRAND_NAME);
-  tray.on("click", toggleMainWindow);
-  updateTrayMenu();
+  if (getTrayPrimaryClickBehavior(process.platform) === "open-menu") {
+    const popUpMenu = () => {
+      if (!tray) return;
+      tray.popUpContextMenu(buildTrayContextMenu());
+    };
+    tray.on("click", popUpMenu);
+    tray.on("right-click", popUpMenu);
+  } else {
+    tray.on("click", toggleMainWindow);
+    updateTrayMenu();
+  }
 };
 const sanitizeHelpSectionId = (value) => {
   const sanitized = sanitizeMaybeString(value, 64, true);
@@ -39463,6 +39499,7 @@ app.whenReady().then(async () => {
   updatePipelineContext();
   initSpeechSession();
   applyThemeSource();
+  updateDockIcon();
   void registerHotkeys();
   applyLoginItemSettings();
   configureAutoUpdater();
