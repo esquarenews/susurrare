@@ -110,8 +110,14 @@ const isRecord = (value: unknown): value is JsonRecord =>
 
 const normalizeAppName = (value: string | null | undefined) => value?.trim().toLowerCase() ?? '';
 
-const isSusurrareAppName = (value: string | null | undefined) =>
-  normalizeAppName(value).includes('susurrare');
+const isSusurrareAppName = (value: string | null | undefined) => {
+  const normalized = normalizeAppName(value);
+  return (
+    normalized.includes('susurrare') ||
+    normalized.includes('vocsen') ||
+    (!app.isPackaged && normalized === 'electron')
+  );
+};
 
 const isSameAppName = (first: string | null | undefined, second: string | null | undefined) => {
   const normalizedFirst = normalizeAppName(first);
@@ -329,7 +335,7 @@ const createWindow = () => {
     height: 720,
     minWidth: 900,
     minHeight: 640,
-    title: 'Susurrare',
+    title: APP_BRAND_NAME,
     webPreferences: {
       preload: (() => {
         const cjs = join(__dirname, '../preload/index.cjs');
@@ -1788,6 +1794,7 @@ ipcMain.handle(IpcChannels.statsSummary, async (_event, envelope) => {
 });
 
 app.whenReady().then(async () => {
+  app.setName(APP_BRAND_NAME);
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
     callback(false);
   });

@@ -37920,7 +37920,10 @@ const ensureMicrophoneAccess = async () => {
 };
 const isRecord = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const normalizeAppName = (value) => value?.trim().toLowerCase() ?? "";
-const isSusurrareAppName = (value) => normalizeAppName(value).includes("susurrare");
+const isSusurrareAppName = (value) => {
+  const normalized = normalizeAppName(value);
+  return normalized.includes("susurrare") || normalized.includes("vocsen") || !app.isPackaged && normalized === "electron";
+};
 const isSameAppName = (first, second) => {
   const normalizedFirst = normalizeAppName(first);
   const normalizedSecond = normalizeAppName(second);
@@ -38103,7 +38106,7 @@ const createWindow = () => {
     height: 720,
     minWidth: 900,
     minHeight: 640,
-    title: "Susurrare",
+    title: APP_BRAND_NAME,
     webPreferences: {
       preload: (() => {
         const cjs = join(__dirname, "../preload/index.cjs");
@@ -39445,6 +39448,7 @@ ipcMain.handle(IpcChannels.statsSummary, async (_event, envelope) => {
   }
 });
 app.whenReady().then(async () => {
+  app.setName(APP_BRAND_NAME);
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
     callback(false);
   });

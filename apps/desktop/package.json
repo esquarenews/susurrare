@@ -6,7 +6,7 @@
   "main": "out/main/index.js",
   "build": {
     "appId": "com.susurrare.desktop",
-    "productName": "Susurrare",
+    "productName": "Vocsen",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -26,9 +26,9 @@
       "gatekeeperAssess": false
     },
     "extraInfoPlist": {
-      "NSMicrophoneUsageDescription": "Susurrare needs access to the microphone for speech-to-text dictation.",
-      "NSAppleEventsUsageDescription": "Susurrare needs permission to control System Events for paste insertion.",
-      "NSInputMonitoringUsageDescription": "Susurrare needs permission to listen for global hotkeys."
+      "NSMicrophoneUsageDescription": "Vocsen needs access to the microphone for speech-to-text dictation.",
+      "NSAppleEventsUsageDescription": "Vocsen needs permission to control System Events for paste insertion.",
+      "NSInputMonitoringUsageDescription": "Vocsen needs permission to listen for global hotkeys."
     },
     "afterSign": "build/notarize.js",
     "publish": {
@@ -37,7 +37,8 @@
     }
   },
   "scripts": {
-    "predev": "electron-vite build --mode development",
+    "brand:dev-host": "node scripts/brand-dev-electron.mjs",
+    "predev": "pnpm run brand:dev-host && electron-vite build --mode development",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
