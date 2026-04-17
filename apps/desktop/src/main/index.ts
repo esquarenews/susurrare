@@ -121,11 +121,12 @@ const lastSoundEffectAt = {
 
 const logHotkeyDebug = (message: string, details?: Record<string, unknown>) => {
   if (app.isPackaged) return;
-  if (details) {
-    log.info(`[hotkey] ${message}`, details);
-    return;
-  }
-  log.info(`[hotkey] ${message}`);
+  log.transports.file({
+    data: details ? [`[hotkey] ${message}`, details] : [`[hotkey] ${message}`],
+    date: new Date(),
+    level: 'info',
+    scope: 'hotkey',
+  });
 };
 
 const shouldShowOverlay = () => settings.overlayStyle !== 'hide';

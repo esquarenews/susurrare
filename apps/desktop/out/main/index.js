@@ -38005,11 +38005,12 @@ const lastSoundEffectAt = {
 };
 const logHotkeyDebug = (message, details) => {
   if (app.isPackaged) return;
-  if (details) {
-    log$1.info(`[hotkey] ${message}`, details);
-    return;
-  }
-  log$1.info(`[hotkey] ${message}`);
+  log$1.transports.file({
+    data: details ? [`[hotkey] ${message}`, details] : [`[hotkey] ${message}`],
+    date: /* @__PURE__ */ new Date(),
+    level: "info",
+    scope: "hotkey"
+  });
 };
 const shouldShowOverlay = () => settings.overlayStyle !== "hide";
 const ensureMicrophoneAccess = async () => {
