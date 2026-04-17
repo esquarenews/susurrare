@@ -37887,10 +37887,12 @@ let hotkeyHandle = null;
 let toggleHandle = null;
 let cancelHandle = null;
 let changeModeHandle = null;
-const HOLD_START_DELAY_MS = 120;
+const HOLD_START_DELAY_MS = 24;
 const MIN_PROCESSING_OVERLAY_MS = 700;
 let holdStartTimer = null;
 let holdKeyActive = false;
+let recordingStartInProgress = false;
+let stopRecordingAfterStart = false;
 const hotkeysEnabled = process.env.SUSURRARE_DISABLE_HOTKEYS !== "1";
 let updateTimer = null;
 let tray = null;
@@ -38569,7 +38571,8 @@ const matchesShortcut = (input, shortcut) => {
   return true;
 };
 const startRecording = async () => {
-  if (recordingActive) return;
+  if (recordingActive || recordingStartInProgress) return;
+  recordingStartInProgress = true;
   try {
     if (!await ensureMicrophoneAccess()) {
       sendRecordingStatus("error", "Microphone access is required to start recording.");
@@ -38694,6 +38697,14 @@ const startRecording = async () => {
       overlayHideTimer = null;
     }
     await platformAdapter.overlay.hide();
+  } finally {
+    recordingStartInProgress = false;
+    if (stopRecordingAfterStart) {
+      stopRecordingAfterStart = false;
+      if (recordingActive) {
+        void stopRecording();
+      }
+    }
   }
 };
 const stopRecording = async () => {
@@ -38763,11 +38774,12 @@ const cancelRecording = async () => {
 const handlePushToTalkActive = (active) => {
   if (active) {
     holdKeyActive = true;
-    if (recordingActive) return;
+    stopRecordingAfterStart = false;
+    if (recordingActive || recordingStartInProgress) return;
     if (holdStartTimer) return;
     holdStartTimer = setTimeout(() => {
       holdStartTimer = null;
-      if (!holdKeyActive || recordingActive) return;
+      if (!holdKeyActive || recordingActive || recordingStartInProgress) return;
       void startRecording();
     }, HOLD_START_DELAY_MS);
     return;
@@ -38776,6 +38788,10 @@ const handlePushToTalkActive = (active) => {
   if (holdStartTimer) {
     clearTimeout(holdStartTimer);
     holdStartTimer = null;
+    return;
+  }
+  if (recordingStartInProgress) {
+    stopRecordingAfterStart = true;
     return;
   }
   if (recordingActive) {
@@ -38912,6 +38928,7 @@ const registerHotkeys = async () => {
   }
   changeModeHandle = null;
   let shouldRetryRegistration = false;
+  const useLowLevelMacHotkeys = process.platform === "darwin";
   try {
     hotkeyHandle = await platformAdapter.hotkey.registerHotkey(
       { key: settings.pushToTalkKey, action: "hold" },
@@ -38922,17 +38939,70 @@ const registerHotkeys = async () => {
     hotkeyHandle = null;
     shouldRetryRegistration = true;
   }
-  const toggleRegistered = registerGlobalShortcut(settings.toggleRecordingKey, () => {
-    triggerToggleRecording();
-  });
-  const changeModeRegistered = registerGlobalShortcut(settings.changeModeShortcut, () => {
-    void cycleActiveMode();
-  });
-  const cancelRegistered = registerGlobalShortcut(settings.cancelKey, () => {
-    void cancelRecording();
-  });
-  toggleHandle = null;
-  cancelHandle = null;
+  let toggleRegistered = false;
+  let changeModeRegistered = false;
+  let cancelRegistered = false;
+  const registerLowLevelToggle = async (accelerator, assign, handler) => {
+    if (!accelerator) {
+      assign(null);
+      return true;
+    }
+    try {
+      assign(
+        await platformAdapter.hotkey.registerHotkey({ key: accelerator, action: "toggle" }, () => {
+          handler();
+        })
+      );
+      return true;
+    } catch (error2) {
+      recordError(error2);
+      assign(null);
+      shouldRetryRegistration = true;
+      return false;
+    }
+  };
+  if (useLowLevelMacHotkeys && hotkeyHandle) {
+    toggleRegistered = await registerLowLevelToggle(
+      settings.toggleRecordingKey,
+      (handle) => {
+        toggleHandle = handle;
+      },
+      () => {
+        triggerToggleRecording();
+      }
+    );
+    changeModeRegistered = await registerLowLevelToggle(
+      settings.changeModeShortcut,
+      (handle) => {
+        changeModeHandle = handle;
+      },
+      () => {
+        void cycleActiveMode();
+      }
+    );
+    cancelRegistered = await registerLowLevelToggle(
+      settings.cancelKey,
+      (handle) => {
+        cancelHandle = handle;
+      },
+      () => {
+        void cancelRecording();
+      }
+    );
+  } else {
+    toggleRegistered = registerGlobalShortcut(settings.toggleRecordingKey, () => {
+      triggerToggleRecording();
+    });
+    changeModeRegistered = registerGlobalShortcut(settings.changeModeShortcut, () => {
+      void cycleActiveMode();
+    });
+    cancelRegistered = registerGlobalShortcut(settings.cancelKey, () => {
+      void cancelRecording();
+    });
+    toggleHandle = null;
+    cancelHandle = null;
+    changeModeHandle = null;
+  }
   if (hotkeyHandle && toggleRegistered && changeModeRegistered && cancelRegistered) {
     hotkeyRetryAttempt = 0;
     return;

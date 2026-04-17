@@ -69,10 +69,12 @@ let hotkeyHandle: { unregister: () => Promise<void> } | null = null;
 let toggleHandle: { unregister: () => Promise<void> } | null = null;
 let cancelHandle: { unregister: () => Promise<void> } | null = null;
 let changeModeHandle: { unregister: () => Promise<void> } | null = null;
-const HOLD_START_DELAY_MS = 120;
+const HOLD_START_DELAY_MS = 24;
 const MIN_PROCESSING_OVERLAY_MS = 700;
 let holdStartTimer: NodeJS.Timeout | null = null;
 let holdKeyActive = false;
+let recordingStartInProgress = false;
+let stopRecordingAfterStart = false;
 const hotkeysEnabled = process.env.SUSURRARE_DISABLE_HOTKEYS !== '1';
 let updateTimer: NodeJS.Timeout | null = null;
 let tray: Tray | null = null;
@@ -846,7 +848,8 @@ const matchesShortcut = (input: Input, shortcut: string) => {
 };
 
 const startRecording = async () => {
-  if (recordingActive) return;
+  if (recordingActive || recordingStartInProgress) return;
+  recordingStartInProgress = true;
   try {
     if (!(await ensureMicrophoneAccess())) {
       sendRecordingStatus('error', 'Microphone access is required to start recording.');
@@ -974,6 +977,14 @@ const startRecording = async () => {
       overlayHideTimer = null;
     }
     await platformAdapter.overlay.hide();
+  } finally {
+    recordingStartInProgress = false;
+    if (stopRecordingAfterStart) {
+      stopRecordingAfterStart = false;
+      if (recordingActive) {
+        void stopRecording();
+      }
+    }
   }
 };
 
@@ -1046,11 +1057,12 @@ const cancelRecording = async () => {
 const handlePushToTalkActive = (active: boolean) => {
   if (active) {
     holdKeyActive = true;
-    if (recordingActive) return;
+    stopRecordingAfterStart = false;
+    if (recordingActive || recordingStartInProgress) return;
     if (holdStartTimer) return;
     holdStartTimer = setTimeout(() => {
       holdStartTimer = null;
-      if (!holdKeyActive || recordingActive) return;
+      if (!holdKeyActive || recordingActive || recordingStartInProgress) return;
       void startRecording();
     }, HOLD_START_DELAY_MS);
     return;
@@ -1059,6 +1071,10 @@ const handlePushToTalkActive = (active: boolean) => {
   if (holdStartTimer) {
     clearTimeout(holdStartTimer);
     holdStartTimer = null;
+    return;
+  }
+  if (recordingStartInProgress) {
+    stopRecordingAfterStart = true;
     return;
   }
   if (recordingActive) {
