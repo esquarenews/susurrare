@@ -37,8 +37,7 @@
     }
   },
   "scripts": {
-    "brand:dev-host": "node scripts/brand-dev-electron.mjs",
-    "predev": "pnpm run brand:dev-host && electron-vite build --mode development",
+    "predev": "electron-vite build --mode development",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
