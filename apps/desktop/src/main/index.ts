@@ -80,6 +80,9 @@ let overlayHideTimer: NodeJS.Timeout | null = null;
 let modeOverlayTimer: NodeJS.Timeout | null = null;
 let lastOverlayPartial = '';
 const suppressionHotkeys = new Set<string>();
+const HOTKEY_REGISTRATION_RETRY_DELAYS_MS = [300, 1000, 2500, 5000] as const;
+let hotkeyRetryTimer: NodeJS.Timeout | null = null;
+let hotkeyRetryAttempt = 0;
 let lastSoundAt = 0;
 let silenceStopRequested = false;
 let trayRecordingState: TrayRecordingState = 'idle';
@@ -1129,14 +1132,40 @@ const attachLocalHotkeys = (win: BrowserWindow) => {
 };
 
 const registerGlobalShortcut = (accelerator: string | undefined, handler: () => void) => {
-  if (!accelerator) return;
+  if (!accelerator) return true;
   try {
     if (globalShortcut.register(accelerator, handler)) {
       suppressionHotkeys.add(accelerator);
+      return true;
     }
+    recordError(new Error(`Unable to register global shortcut: ${accelerator}`));
   } catch (error) {
     recordError(error);
   }
+  return false;
+};
+
+const clearHotkeyRegistrationRetry = () => {
+  if (!hotkeyRetryTimer) return;
+  clearTimeout(hotkeyRetryTimer);
+  hotkeyRetryTimer = null;
+};
+
+const scheduleHotkeyRegistrationRetry = (reason: string) => {
+  if (!hotkeysEnabled || hotkeyRetryTimer) return;
+  const delay = HOTKEY_REGISTRATION_RETRY_DELAYS_MS[hotkeyRetryAttempt];
+  if (delay === undefined) {
+    log.warn(`Hotkey registration retries exhausted: ${reason}`);
+    return;
+  }
+  hotkeyRetryAttempt += 1;
+  log.warn(
+    `Retrying hotkey registration in ${delay}ms (attempt ${hotkeyRetryAttempt}/${HOTKEY_REGISTRATION_RETRY_DELAYS_MS.length}): ${reason}`
+  );
+  hotkeyRetryTimer = setTimeout(() => {
+    hotkeyRetryTimer = null;
+    void registerHotkeys();
+  }, delay);
 };
 
 const triggerToggleRecording = () => {
@@ -1149,6 +1178,7 @@ const triggerToggleRecording = () => {
 
 const registerHotkeys = async () => {
   if (!hotkeysEnabled) return;
+  clearHotkeyRegistrationRetry();
   suppressionHotkeys.forEach((key) => globalShortcut.unregister(key));
   suppressionHotkeys.clear();
   try {
@@ -1172,6 +1202,7 @@ const registerHotkeys = async () => {
     recordError(error);
   }
   changeModeHandle = null;
+  let shouldRetryRegistration = false;
   try {
     hotkeyHandle = await platformAdapter.hotkey.registerHotkey(
       { key: settings.pushToTalkKey, action: 'hold' },
@@ -1180,25 +1211,33 @@ const registerHotkeys = async () => {
   } catch (error) {
     recordError(error);
     hotkeyHandle = null;
+    shouldRetryRegistration = true;
   }
 
   // Hold-to-talk must stay on the low-level hook only. Electron global shortcuts
   // do not expose key-up, so a fallback here degrades into toggle behavior.
 
   // These actions are edge-triggered and work reliably with Electron's global shortcuts.
-  registerGlobalShortcut(settings.toggleRecordingKey, () => {
+  const toggleRegistered = registerGlobalShortcut(settings.toggleRecordingKey, () => {
     triggerToggleRecording();
   });
-  registerGlobalShortcut(settings.changeModeShortcut, () => {
+  const changeModeRegistered = registerGlobalShortcut(settings.changeModeShortcut, () => {
     void cycleActiveMode();
   });
-  registerGlobalShortcut(settings.cancelKey, () => {
+  const cancelRegistered = registerGlobalShortcut(settings.cancelKey, () => {
     void cancelRecording();
   });
 
   toggleHandle = null;
   cancelHandle = null;
-  return;
+  if (hotkeyHandle && toggleRegistered && changeModeRegistered && cancelRegistered) {
+    hotkeyRetryAttempt = 0;
+    return;
+  }
+  shouldRetryRegistration ||= !toggleRegistered || !changeModeRegistered || !cancelRegistered;
+  if (shouldRetryRegistration) {
+    scheduleHotkeyRegistrationRetry('one or more global hotkeys failed to bind');
+  }
 };
 
 const createTranscriptionClientForSettings = () => {
@@ -1435,7 +1474,7 @@ const initSpeechSession = () => {
       if (!result.success && result.method === 'clipboard') {
         sendRecordingStatus(
           'error',
-          'Could not paste into the target app. Text was copied to the clipboard. Grant Accessibility and Automation access to Electron and allow control of System Events.'
+          'Could not paste into the target app. Text was copied to the clipboard. Grant Accessibility and Automation access to Vocsen. In development builds, the entry may still appear as Vocsen or Electron. Also allow control of System Events.'
         );
       }
       return result;
@@ -1844,14 +1883,20 @@ app.whenReady().then(async () => {
   warmSoundPlayer({ force: true });
   scheduleSoundWarmMaintenance();
   if (process.platform === 'darwin') {
-    powerMonitor.on('resume', () => warmSoundPlayer({ force: true }));
-    powerMonitor.on('unlock-screen', () => warmSoundPlayer({ force: true }));
+    powerMonitor.on('resume', () => {
+      warmSoundPlayer({ force: true });
+      void registerHotkeys();
+    });
+    powerMonitor.on('unlock-screen', () => {
+      warmSoundPlayer({ force: true });
+      void registerHotkeys();
+    });
   }
   updatePipelineContext();
   initSpeechSession();
   applyThemeSource();
   updateDockIcon();
-  void registerHotkeys();
+  await registerHotkeys();
   applyLoginItemSettings();
   configureAutoUpdater();
   scheduleUpdateChecks();
@@ -1867,6 +1912,7 @@ app.whenReady().then(async () => {
   sendHistoryUpdated();
 
   app.on('activate', () => {
+    void registerHotkeys();
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
     if (!recordingActive) {
       if (shouldShowOverlay()) {

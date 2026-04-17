@@ -55,7 +55,7 @@ const requireAccessibilityAccess = (prompt = false) => {
     if (hasAccessibilityAccess()) return;
   }
   throw new Error(
-    'Accessibility access is required for low-level hotkeys on macOS. Open System Settings > Privacy & Security > Accessibility and Input Monitoring, then grant access to Electron.'
+    'Accessibility access is required for low-level hotkeys on macOS. Open System Settings > Privacy & Security > Accessibility and Input Monitoring, then grant access to Vocsen. In development builds, the entry may appear as Vocsen or Electron.'
   );
 };
 
@@ -1144,7 +1144,7 @@ export const macosAdapter: PlatformAdapter = {
       };
     },
     async requestGuidance() {
-      return 'Open System Settings > Privacy & Security to grant microphone and accessibility access. For development builds, grant access to Electron. If text is copied but not pasted, also allow Electron to control System Events under Automation. Microphone permission is requested when you start recording.';
+      return 'Open System Settings > Privacy & Security to grant microphone and accessibility access to Vocsen. In development builds, the entry may appear as Vocsen or Electron. If text is copied but not pasted, also allow Vocsen or Electron to control System Events under Automation. Microphone permission is requested when you start recording.';
     },
   },
 };
