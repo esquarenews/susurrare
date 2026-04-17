@@ -31,15 +31,21 @@
       "NSInputMonitoringUsageDescription": "Vocsen needs permission to listen for global hotkeys."
     },
     "afterSign": "build/notarize.js",
+    "extraResources": [
+      {
+        "from": "resources/bin",
+        "to": "bin"
+      }
+    ],
     "publish": {
       "provider": "generic",
       "url": "https://example.com/updates"
     }
   },
   "scripts": {
-    "predev": "electron-vite build --mode development",
+    "predev": "node scripts/build-hotkey-helper.mjs && electron-vite build --mode development",
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "node scripts/build-hotkey-helper.mjs && electron-vite build",
     "preview": "electron-vite preview",
     "test:e2e": "pnpm build && playwright test",
     "dist": "pnpm build && electron-builder --mac"
@@ -52,7 +58,6 @@
     "node-record-lpcm16": "^1.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "uiohook-napi": "^1.5.4",
     "ws": "^8.18.0",
     "zod": "^3.23.8"
   },

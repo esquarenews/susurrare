@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
   Menu,
   Tray,
@@ -52,6 +53,10 @@ import {
   HistoryExportSchema,
   AppInfoSchema,
   shouldWarmSoundPlayer,
+  shouldPlaySoundEffect,
+  createCoalescedAsyncRunner,
+  getHotkeyStartupFailureMessage,
+  resolvePushToTalkReleaseDisposition,
   type TrayRecordingState,
 } from '@susurrare/core';
 import { platformAdapter } from './platform';
@@ -70,8 +75,10 @@ let toggleHandle: { unregister: () => Promise<void> } | null = null;
 let cancelHandle: { unregister: () => Promise<void> } | null = null;
 let changeModeHandle: { unregister: () => Promise<void> } | null = null;
 const HOLD_START_DELAY_MS = 24;
+const HOLD_RELEASE_DEBOUNCE_MS = 120;
 const MIN_PROCESSING_OVERLAY_MS = 700;
 let holdStartTimer: NodeJS.Timeout | null = null;
+let holdReleaseTimer: NodeJS.Timeout | null = null;
 let holdKeyActive = false;
 let recordingStartInProgress = false;
 let stopRecordingAfterStart = false;
@@ -96,10 +103,21 @@ const APP_BRAND_NAME = 'Vocsen';
 const SOUND_WARM_STALE_AFTER_MS = 1000 * 60 * 6;
 const SOUND_WARM_MIN_INTERVAL_MS = 800;
 const SOUND_WARM_MAINTENANCE_INTERVAL_MS = 1000 * 60 * 2;
+const SOUND_EFFECT_MAX_PLAYBACK_MS = 2000;
+const SOUND_EFFECT_MIN_INTERVAL_MS = {
+  start: 350,
+  end: 150,
+} as const;
 let soundWarmTimer: NodeJS.Timeout | null = null;
 let recordingTargetAppName: string | null = null;
 let recordingStartedAt = 0;
 let recordingChunkCount = 0;
+let startSoundEffectProcess: ReturnType<typeof spawn> | null = null;
+let endSoundEffectProcess: ReturnType<typeof spawn> | null = null;
+const lastSoundEffectAt = {
+  start: 0,
+  end: 0,
+};
 
 const logHotkeyDebug = (message: string, details?: Record<string, unknown>) => {
   if (app.isPackaged) return;
@@ -510,10 +528,54 @@ const playSoundEffect = (kind: 'start' | 'end') => {
   if (!startSoundPath || !endSoundPath) preloadSoundEffects();
   const soundPath = kind === 'start' ? startSoundPath : endSoundPath;
   if (!soundPath) return;
+  const activeProcess = kind === 'start' ? startSoundEffectProcess : endSoundEffectProcess;
+  const isPlaying = Boolean(activeProcess && activeProcess.exitCode === null && !activeProcess.killed);
+  const nowMs = Date.now();
+  if (
+    !shouldPlaySoundEffect({
+      nowMs,
+      lastPlayedAtMs: lastSoundEffectAt[kind],
+      isPlaying,
+      minIntervalMs: SOUND_EFFECT_MIN_INTERVAL_MS[kind],
+    })
+  ) {
+    return;
+  }
   const volume = Math.min(1, volumeSetting / 100) * 0.6;
   try {
     const child = spawn('/usr/bin/afplay', ['-v', volume.toFixed(2), soundPath], {
       stdio: 'ignore',
+    });
+    const clearProcess = () => {
+      if (kind === 'start') {
+        if (startSoundEffectProcess === child) startSoundEffectProcess = null;
+      } else if (endSoundEffectProcess === child) {
+        endSoundEffectProcess = null;
+      }
+    };
+    const playbackTimeout = setTimeout(() => {
+      if (child.exitCode !== null || child.killed) return;
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // ignore kill failures for already-closed processes
+      }
+    }, SOUND_EFFECT_MAX_PLAYBACK_MS);
+    playbackTimeout.unref();
+    lastSoundEffectAt[kind] = nowMs;
+    if (kind === 'start') {
+      startSoundEffectProcess = child;
+    } else {
+      endSoundEffectProcess = child;
+    }
+    child.once('error', (error) => {
+      clearTimeout(playbackTimeout);
+      clearProcess();
+      recordError(error);
+    });
+    child.once('close', () => {
+      clearTimeout(playbackTimeout);
+      clearProcess();
     });
     child.unref();
   } catch (error) {
@@ -1113,8 +1175,13 @@ const handlePushToTalkActive = (active: boolean) => {
     recordingActive,
     recordingStartInProgress,
     holdStartTimer: Boolean(holdStartTimer),
+    holdReleaseTimer: Boolean(holdReleaseTimer),
   });
   if (active) {
+    if (holdReleaseTimer) {
+      clearTimeout(holdReleaseTimer);
+      holdReleaseTimer = null;
+    }
     holdKeyActive = true;
     stopRecordingAfterStart = false;
     if (recordingActive || recordingStartInProgress) return;
@@ -1126,18 +1193,39 @@ const handlePushToTalkActive = (active: boolean) => {
     }, HOLD_START_DELAY_MS);
     return;
   }
-  holdKeyActive = false;
-  if (holdStartTimer) {
-    clearTimeout(holdStartTimer);
-    holdStartTimer = null;
-    return;
-  }
-  if (recordingStartInProgress) {
-    stopRecordingAfterStart = true;
-    return;
-  }
-  if (recordingActive) {
-    void stopRecording();
+  switch (
+    resolvePushToTalkReleaseDisposition({
+      holdStartPending: Boolean(holdStartTimer),
+      recordingActive,
+      recordingStartInProgress,
+    })
+  ) {
+    case 'cancel-pending-start':
+      holdKeyActive = false;
+      if (holdStartTimer) {
+        clearTimeout(holdStartTimer);
+        holdStartTimer = null;
+      }
+      return;
+    case 'debounce-release':
+      if (holdReleaseTimer) return;
+      holdReleaseTimer = setTimeout(() => {
+        holdReleaseTimer = null;
+        holdKeyActive = false;
+        if (recordingStartInProgress) {
+          stopRecordingAfterStart = true;
+          return;
+        }
+        if (recordingActive) {
+          void stopRecording();
+        }
+      }, HOLD_RELEASE_DEBOUNCE_MS);
+      holdReleaseTimer.unref?.();
+      return;
+    case 'ignore':
+    default:
+      holdKeyActive = false;
+      return;
   }
 };
 
@@ -1251,8 +1339,14 @@ const triggerToggleRecording = () => {
   }
 };
 
-const registerHotkeys = async () => {
+const performHotkeyRegistration = async () => {
   if (!hotkeysEnabled) return;
+  logHotkeyDebug('registerHotkeys begin', {
+    pushToTalkKey: settings.pushToTalkKey,
+    toggleRecordingKey: settings.toggleRecordingKey,
+    cancelKey: settings.cancelKey,
+    changeModeShortcut: settings.changeModeShortcut,
+  });
   clearHotkeyRegistrationRetry();
   suppressionHotkeys.forEach((key) => globalShortcut.unregister(key));
   suppressionHotkeys.clear();
@@ -1281,10 +1375,17 @@ const registerHotkeys = async () => {
   try {
     hotkeyHandle = await platformAdapter.hotkey.registerHotkey(
       { key: settings.pushToTalkKey, action: 'hold' },
-      (active) => handlePushToTalkActive(active)
+      (active) => {
+        logHotkeyDebug('push-to-talk listener callback', { active });
+        handlePushToTalkActive(active);
+      }
     );
+    logHotkeyDebug('push-to-talk registered', { key: settings.pushToTalkKey });
   } catch (error) {
     recordError(error);
+    logHotkeyDebug('push-to-talk registration failed', {
+      message: error instanceof Error ? error.message : String(error),
+    });
     hotkeyHandle = null;
     shouldRetryRegistration = true;
   }
@@ -1305,6 +1406,11 @@ const registerHotkeys = async () => {
   cancelRegistered = registerGlobalShortcut(settings.cancelKey, () => {
     void cancelRecording();
   });
+  logHotkeyDebug('global shortcuts registered', {
+    toggleRegistered,
+    changeModeRegistered,
+    cancelRegistered,
+  });
   toggleHandle = null;
   cancelHandle = null;
   changeModeHandle = null;
@@ -1317,6 +1423,23 @@ const registerHotkeys = async () => {
   if (shouldRetryRegistration) {
     scheduleHotkeyRegistrationRetry('one or more global hotkeys failed to bind');
   }
+};
+
+const registerHotkeys = createCoalescedAsyncRunner(performHotkeyRegistration);
+
+const enforceStartupHotkeyRegistration = () => {
+  const failureMessage = getHotkeyStartupFailureMessage({
+    platform: process.platform,
+    hotkeysEnabled,
+    isPackaged: app.isPackaged,
+    pushToTalkRegistered: Boolean(hotkeyHandle),
+    pushToTalkKey: settings.pushToTalkKey,
+  });
+  if (!failureMessage) return;
+  log.error(failureMessage);
+  dialog.showErrorBox('Vocsen hotkey startup failed', failureMessage);
+  app.exit(1);
+  throw new Error(failureMessage);
 };
 
 const createTranscriptionClientForSettings = () => {
@@ -1976,6 +2099,7 @@ app.whenReady().then(async () => {
   applyThemeSource();
   updateDockIcon();
   await registerHotkeys();
+  enforceStartupHotkeyRegistration();
   applyLoginItemSettings();
   configureAutoUpdater();
   scheduleUpdateChecks();

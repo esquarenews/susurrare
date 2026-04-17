@@ -74,9 +74,6 @@ importers:
       react-dom:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
-      uiohook-napi:
-        specifier: ^1.5.4
-        version: 1.5.4
       ws:
         specifier: ^8.18.0
         version: 8.19.0
@@ -155,9 +152,6 @@ importers:
       node-record-lpcm16:
         specifier: ^1.0.1
         version: 1.0.1
-      uiohook-napi:
-        specifier: ^1.5.4
-        version: 1.5.4
 
   packages/platform-windows:
     dependencies:
@@ -2397,10 +2391,6 @@ packages:
   node-api-version@0.2.1:
     resolution: {integrity: sha512-2xP/IGGMmmSQpI1+O/k72jF/ykvZ89JeuKX3TLJAYPDVLUalrshrLHkeVcCCZqG/eEa635cr8IBYzgnDvM2O8Q==}
 
-  node-gyp-build@4.8.4:
-    resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
-    hasBin: true
-
   node-gyp@11.5.0:
     resolution: {integrity: sha512-ra7Kvlhxn5V9Slyus0ygMa2h+UqExPqUIkfk7Pc8QTLT956JLSy51uWFwHtIYy0vI8cB4BDhc/S03+880My/LQ==}
     engines: {node: ^18.17.0 || >=20.5.0}
@@ -3114,10 +3104,6 @@ packages:
 
   ufo@1.6.3:
     resolution: {integrity: sha512-yDJTmhydvl5lJzBmy/hyOAA0d+aqCBuwl818haVdYCRrWV84o7YyeVm4QlVHStqNrrJSTb6jKuFAVqAFsr+K3Q==}
-
-  uiohook-napi@1.5.4:
-    resolution: {integrity: sha512-7vPVDNwgb6MwTgviA/dnF2MrW0X5xm76fAqaOAC3cEKkswqAZOPw1USu14Sr6383s5qhXegcJaR63CpJOPCNAg==}
-    engines: {node: '>= 16'}
 
   unbox-primitive@1.1.0:
     resolution: {integrity: sha512-nWJ91DjeOkej/TA8pXQ3myruKpKEYgqvpw9lz4OPHj/NWFNluYrjbz9j01CJ8yKQd2g4jFoOkINCTW2I5LEEyw==}
@@ -5943,8 +5929,6 @@ snapshots:
     dependencies:
       semver: 7.7.4
 
-  node-gyp-build@4.8.4: {}
-
   node-gyp@11.5.0:
     dependencies:
       env-paths: 2.2.1
@@ -6775,10 +6759,6 @@ snapshots:
   typescript@5.5.4: {}
 
   ufo@1.6.3: {}
-
-  uiohook-napi@1.5.4:
-    dependencies:
-      node-gyp-build: 4.8.4
 
   unbox-primitive@1.1.0:
     dependencies:

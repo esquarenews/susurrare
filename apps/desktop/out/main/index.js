@@ -1,6 +1,6 @@
-import require$$1$3, { clipboard, systemPreferences, BrowserWindow, screen, app, safeStorage, ipcMain, session, powerMonitor, nativeTheme, globalShortcut, shell, nativeImage, Tray, Menu } from "electron";
+import require$$1$3, { clipboard, systemPreferences, BrowserWindow, screen, app, safeStorage, ipcMain, session, powerMonitor, nativeTheme, shell, nativeImage, dialog, Tray, Menu, globalShortcut } from "electron";
 import require$$1$4, { execFile, spawn } from "child_process";
-import require$$1, { join } from "path";
+import require$$1, { dirname, join, resolve as resolve$1 } from "path";
 import require$$0$3, { existsSync, readFileSync as readFileSync$1, writeFileSync as writeFileSync$1, mkdirSync, createWriteStream, unlinkSync } from "fs";
 import require$$0 from "constants";
 import require$$0$1 from "stream";
@@ -10,12 +10,13 @@ import require$$0$4 from "events";
 import require$$0$5 from "crypto";
 import require$$1$1 from "tty";
 import require$$1$2 from "os";
-import require$$2$1 from "url";
+import require$$2$1, { fileURLToPath } from "url";
 import require$$0$6 from "zlib";
 import require$$4 from "http";
 import require$$1$5 from "https";
 import WebSocket from "ws";
 import { createRequire } from "module";
+import { createInterface } from "readline";
 import require$$0$7 from "buffer";
 import __cjs_mod__ from "node:module";
 const __filename = import.meta.filename;
@@ -20520,6 +20521,27 @@ objectType({
   version: literalType(IPC_VERSION),
   payload: unknownType()
 });
+const createCoalescedAsyncRunner = (task) => {
+  let inFlight = null;
+  let rerunRequested = false;
+  const runLoop = async () => {
+    do {
+      rerunRequested = false;
+      await task();
+    } while (rerunRequested);
+  };
+  return async () => {
+    if (inFlight) {
+      rerunRequested = true;
+      await inFlight;
+      return;
+    }
+    inFlight = runLoop().finally(() => {
+      inFlight = null;
+    });
+    await inFlight;
+  };
+};
 const SCHEMA_VERSION = 1;
 const ModeSchema = objectType({
   id: stringType(),
@@ -21622,6 +21644,32 @@ objectType({
   success: booleanType(),
   errorCode: stringType().optional()
 });
+const getHotkeyStartupFailureMessage = ({
+  platform: platform2,
+  hotkeysEnabled: hotkeysEnabled2,
+  isPackaged,
+  pushToTalkRegistered,
+  pushToTalkKey
+}) => {
+  if (!hotkeysEnabled2) return null;
+  if (platform2 !== "darwin") return null;
+  if (isPackaged) return null;
+  if (pushToTalkRegistered) return null;
+  return [
+    `Push-to-talk hotkey ${pushToTalkKey} failed to register during development startup.`,
+    "Vocsen exits immediately in this state because hold-to-talk will not work.",
+    "Rebuild the desktop app and restart `pnpm dev`."
+  ].join(" ");
+};
+const resolvePushToTalkReleaseDisposition = ({
+  holdStartPending,
+  recordingActive: recordingActive2,
+  recordingStartInProgress: recordingStartInProgress2
+}) => {
+  if (holdStartPending) return "cancel-pending-start";
+  if (recordingActive2 || recordingStartInProgress2) return "debounce-release";
+  return "ignore";
+};
 const shouldWarmSoundPlayer = ({
   nowMs,
   lastWarmAtMs,
@@ -21635,6 +21683,16 @@ const shouldWarmSoundPlayer = ({
   if (elapsedMs < minIntervalMs) return false;
   if (force) return true;
   return elapsedMs >= staleAfterMs;
+};
+const shouldPlaySoundEffect = ({
+  nowMs,
+  lastPlayedAtMs,
+  isPlaying,
+  minIntervalMs
+}) => {
+  if (isPlaying) return false;
+  if (nowMs - lastPlayedAtMs < minIntervalMs) return false;
+  return true;
 };
 const API_KEY_STORED_MARKER = "stored-in-secure-store";
 const stripApiKeyFromSettings = (settings2) => SettingsSchema.parse({
@@ -22388,7 +22446,6 @@ const mapWaveToVocsenOverlayLevels = (wave, bars = VOCSEN_OVERLAY_BAR_PROFILE.le
 };
 const require$1 = createRequire(import.meta.url);
 const record = require$1("node-record-lpcm16");
-let uiohookModule = null;
 let accessibilityPromptAttempted = false;
 const hasAccessibilityAccess = () => systemPreferences.isTrustedAccessibilityClient(false);
 const requireAccessibilityAccess = (prompt = false) => {
@@ -22414,34 +22471,6 @@ const mapMicrophoneAccess = () => {
       return "prompt";
   }
 };
-const loadUiohook = () => {
-  if (uiohookModule) return uiohookModule;
-  let loaded;
-  try {
-    loaded = require$1("uiohook-napi");
-  } catch (error2) {
-    const details = error2 instanceof Error ? error2.message : String(error2);
-    throw new Error(
-      `uiohook-napi failed to load. Rebuild it for Electron (pnpm dlx electron-rebuild -f -w uiohook-napi). ${details}`
-    );
-  }
-  uiohookModule = loaded;
-  return loaded;
-};
-const registrations = /* @__PURE__ */ new Set();
-let hookStarted = false;
-let hookAttached = false;
-const startHook = () => {
-  if (hookStarted) return;
-  requireAccessibilityAccess(true);
-  loadUiohook().uIOhook.start();
-  hookStarted = true;
-};
-const stopHook = () => {
-  if (!hookStarted) return;
-  loadUiohook().uIOhook.stop();
-  hookStarted = false;
-};
 const pause$1 = (ms2) => new Promise((resolve2) => {
   setTimeout(resolve2, ms2);
 });
@@ -22454,65 +22483,40 @@ const runOsaScript = (script) => new Promise((resolve2, reject2) => {
     }
   });
 });
-const normalizeShortcut$1 = (shortcut) => {
-  const tokens = shortcut.split("+").map((token) => token.trim()).filter(Boolean);
-  const modifiers = new Set(tokens.map((token) => token.toLowerCase()));
-  const mainKey = tokens[tokens.length - 1]?.toLowerCase() ?? "";
-  return { modifiers, mainKey };
-};
-const resolveKeycode = (key) => {
-  const normalized = key.replace(/\s+/g, "").toUpperCase();
-  const aliases = {
-    ESC: "Escape",
-    ESCAPE: "Escape",
-    RETURN: "Enter",
-    ENTER: "Enter",
-    SPACE: "Space",
-    TAB: "Tab",
-    BACKSPACE: "Backspace",
-    DELETE: "Delete",
-    DEL: "Delete"
-  };
-  const candidate = loadUiohook().UiohookKey[normalized] ?? (aliases[normalized] ? loadUiohook().UiohookKey[aliases[normalized]] : void 0);
-  if (candidate === void 0) {
-    throw new Error(`Unsupported hotkey: ${key}`);
+const HOTKEY_HELPER_NAME = "vocsen-hotkey-helper";
+const hotkeyHelperModuleDir = dirname(fileURLToPath(import.meta.url));
+const resolveHotkeyHelperPath = () => {
+  const candidates = [
+    process.env.SUSURRARE_HOTKEY_HELPER_PATH,
+    join(process.resourcesPath, "bin", HOTKEY_HELPER_NAME),
+    join(app.getAppPath(), "resources", "bin", HOTKEY_HELPER_NAME),
+    join(process.cwd(), "resources", "bin", HOTKEY_HELPER_NAME),
+    join(process.cwd(), "apps", "desktop", "resources", "bin", HOTKEY_HELPER_NAME),
+    resolve$1(hotkeyHelperModuleDir, "..", "..", "..", "apps", "desktop", "resources", "bin", HOTKEY_HELPER_NAME)
+  ].filter((candidate) => Boolean(candidate));
+  const helperPath = candidates.find((candidate) => existsSync(candidate));
+  if (!helperPath) {
+    throw new Error(
+      "Vocsen hotkey helper is missing. Run `pnpm -C apps/desktop build` to compile the macOS hold-to-talk helper."
+    );
   }
-  return candidate;
+  return helperPath;
 };
-const matchesRegistration = (event, registration) => {
-  if (event.keycode !== registration.keycode) return false;
-  if (event.shiftKey !== registration.modifiers.shift) return false;
-  if (event.ctrlKey !== registration.modifiers.control) return false;
-  if (event.altKey !== registration.modifiers.alt) return false;
-  if (event.metaKey !== registration.modifiers.meta) return false;
-  return true;
-};
-const ensureHookHandlers = () => {
-  if (hookAttached) return;
-  hookAttached = true;
-  loadUiohook().uIOhook.on("keydown", (event) => {
-    registrations.forEach((registration) => {
-      if (!matchesRegistration(event, registration)) return;
-      if (registration.action === "hold") {
-        if (!registration.active) {
-          registration.active = true;
-          registration.listener(true);
-        }
-        return;
-      }
-      registration.active = !registration.active;
-      registration.listener(registration.active);
-    });
-  });
-  loadUiohook().uIOhook.on("keyup", (event) => {
-    registrations.forEach((registration) => {
-      if (registration.action !== "hold") return;
-      if (!registration.active) return;
-      if (!matchesRegistration(event, registration)) return;
-      registration.active = false;
-      registration.listener(false);
-    });
-  });
+const parseHelperMessage = (line) => {
+  try {
+    const parsed = JSON.parse(line);
+    if (parsed.type === "ready") {
+      return { type: "ready" };
+    }
+    if (parsed.type === "state" && typeof parsed.active === "boolean") {
+      return { type: "state", active: parsed.active };
+    }
+    if (parsed.type === "error" && typeof parsed.message === "string") {
+      return { type: "error", message: parsed.message };
+    }
+  } catch {
+  }
+  return null;
 };
 const DEFAULT_SAMPLE_RATE = 16e3;
 const STREAM_FRAME_MS = 10;
@@ -23168,30 +23172,98 @@ const concatChunks = (chunks) => {
 const macosAdapter = {
   hotkey: {
     async registerHotkey(config, listener) {
-      ensureHookHandlers();
-      const { modifiers, mainKey } = normalizeShortcut$1(config.key);
-      const registration = {
-        keycode: resolveKeycode(mainKey),
-        modifiers: {
-          shift: modifiers.has("shift"),
-          control: modifiers.has("ctrl") || modifiers.has("control"),
-          alt: modifiers.has("alt") || modifiers.has("option"),
-          meta: modifiers.has("cmd") || modifiers.has("command") || modifiers.has("meta")
-        },
-        action: config.action,
-        listener,
-        active: false
-      };
-      registrations.add(registration);
-      startHook();
-      return {
-        async unregister() {
-          registrations.delete(registration);
-          if (registrations.size === 0) {
-            stopHook();
+      requireAccessibilityAccess(true);
+      const helperPath = resolveHotkeyHelperPath();
+      const helper = spawn(helperPath, ["--shortcut", config.key], {
+        stdio: ["ignore", "pipe", "pipe"]
+      });
+      const output = createInterface({ input: helper.stdout });
+      const stderrChunks = [];
+      let active = false;
+      let ready = false;
+      return await new Promise((resolvePromise, rejectPromise) => {
+        const readyTimeout = setTimeout(() => {
+          cleanup();
+          rejectPromise(new Error("Vocsen hotkey helper timed out while registering the hotkey."));
+        }, 3e3);
+        const fail = (message) => {
+          clearTimeout(readyTimeout);
+          cleanup();
+          rejectPromise(new Error(message));
+        };
+        const cleanup = () => {
+          output.removeAllListeners();
+          helper.stdout.removeAllListeners();
+          helper.stderr.removeAllListeners();
+          helper.removeAllListeners();
+          output.close();
+        };
+        helper.stderr.on("data", (chunk) => {
+          stderrChunks.push(chunk.toString());
+        });
+        output.on("line", (line) => {
+          const message = parseHelperMessage(line);
+          if (!message) return;
+          if (message.type === "ready") {
+            if (ready) return;
+            ready = true;
+            clearTimeout(readyTimeout);
+            resolvePromise({
+              async unregister() {
+                clearTimeout(readyTimeout);
+                cleanup();
+                if (helper.exitCode !== null || helper.killed) return;
+                await new Promise((resolveStop) => {
+                  const killTimer = setTimeout(() => {
+                    if (helper.exitCode === null && !helper.killed) {
+                      try {
+                        helper.kill("SIGKILL");
+                      } catch {
+                      }
+                    }
+                  }, 250);
+                  killTimer.unref?.();
+                  helper.once("exit", () => {
+                    clearTimeout(killTimer);
+                    resolveStop();
+                  });
+                  try {
+                    helper.kill("SIGTERM");
+                  } catch {
+                    clearTimeout(killTimer);
+                    resolveStop();
+                  }
+                });
+              }
+            });
+            return;
           }
-        }
-      };
+          if (message.type === "error") {
+            fail(message.message);
+            return;
+          }
+          if (message.type === "state") {
+            if (config.action === "hold") {
+              listener(message.active);
+              return;
+            }
+            if (message.active) {
+              active = !active;
+              listener(active);
+            }
+          }
+        });
+        helper.once("exit", (code, signal) => {
+          if (ready) return;
+          const stderr = stderrChunks.join("").trim();
+          fail(
+            stderr || `Vocsen hotkey helper exited before becoming ready (code=${code ?? "null"}, signal=${signal ?? "null"}).`
+          );
+        });
+        helper.once("error", (error2) => {
+          fail(error2 instanceof Error ? error2.message : String(error2));
+        });
+      });
     }
   },
   audioCapture: {
@@ -37888,8 +37960,10 @@ let toggleHandle = null;
 let cancelHandle = null;
 let changeModeHandle = null;
 const HOLD_START_DELAY_MS = 24;
+const HOLD_RELEASE_DEBOUNCE_MS = 120;
 const MIN_PROCESSING_OVERLAY_MS = 700;
 let holdStartTimer = null;
+let holdReleaseTimer = null;
 let holdKeyActive = false;
 let recordingStartInProgress = false;
 let stopRecordingAfterStart = false;
@@ -37914,10 +37988,21 @@ const APP_BRAND_NAME = "Vocsen";
 const SOUND_WARM_STALE_AFTER_MS = 1e3 * 60 * 6;
 const SOUND_WARM_MIN_INTERVAL_MS = 800;
 const SOUND_WARM_MAINTENANCE_INTERVAL_MS = 1e3 * 60 * 2;
+const SOUND_EFFECT_MAX_PLAYBACK_MS = 2e3;
+const SOUND_EFFECT_MIN_INTERVAL_MS = {
+  start: 350,
+  end: 150
+};
 let soundWarmTimer = null;
 let recordingTargetAppName = null;
 let recordingStartedAt = 0;
 let recordingChunkCount = 0;
+let startSoundEffectProcess = null;
+let endSoundEffectProcess = null;
+const lastSoundEffectAt = {
+  start: 0,
+  end: 0
+};
 const logHotkeyDebug = (message, details) => {
   if (app.isPackaged) return;
   if (details) {
@@ -38265,10 +38350,51 @@ const playSoundEffect = (kind) => {
   if (!startSoundPath || !endSoundPath) preloadSoundEffects();
   const soundPath = kind === "start" ? startSoundPath : endSoundPath;
   if (!soundPath) return;
+  const activeProcess = kind === "start" ? startSoundEffectProcess : endSoundEffectProcess;
+  const isPlaying = Boolean(activeProcess && activeProcess.exitCode === null && !activeProcess.killed);
+  const nowMs = Date.now();
+  if (!shouldPlaySoundEffect({
+    nowMs,
+    lastPlayedAtMs: lastSoundEffectAt[kind],
+    isPlaying,
+    minIntervalMs: SOUND_EFFECT_MIN_INTERVAL_MS[kind]
+  })) {
+    return;
+  }
   const volume = Math.min(1, volumeSetting / 100) * 0.6;
   try {
     const child = spawn("/usr/bin/afplay", ["-v", volume.toFixed(2), soundPath], {
       stdio: "ignore"
+    });
+    const clearProcess = () => {
+      if (kind === "start") {
+        if (startSoundEffectProcess === child) startSoundEffectProcess = null;
+      } else if (endSoundEffectProcess === child) {
+        endSoundEffectProcess = null;
+      }
+    };
+    const playbackTimeout = setTimeout(() => {
+      if (child.exitCode !== null || child.killed) return;
+      try {
+        child.kill("SIGKILL");
+      } catch {
+      }
+    }, SOUND_EFFECT_MAX_PLAYBACK_MS);
+    playbackTimeout.unref();
+    lastSoundEffectAt[kind] = nowMs;
+    if (kind === "start") {
+      startSoundEffectProcess = child;
+    } else {
+      endSoundEffectProcess = child;
+    }
+    child.once("error", (error2) => {
+      clearTimeout(playbackTimeout);
+      clearProcess();
+      recordError(error2);
+    });
+    child.once("close", () => {
+      clearTimeout(playbackTimeout);
+      clearProcess();
     });
     child.unref();
   } catch (error2) {
@@ -38827,9 +38953,14 @@ const handlePushToTalkActive = (active) => {
     holdKeyActive,
     recordingActive,
     recordingStartInProgress,
-    holdStartTimer: Boolean(holdStartTimer)
+    holdStartTimer: Boolean(holdStartTimer),
+    holdReleaseTimer: Boolean(holdReleaseTimer)
   });
   if (active) {
+    if (holdReleaseTimer) {
+      clearTimeout(holdReleaseTimer);
+      holdReleaseTimer = null;
+    }
     holdKeyActive = true;
     stopRecordingAfterStart = false;
     if (recordingActive || recordingStartInProgress) return;
@@ -38841,18 +38972,37 @@ const handlePushToTalkActive = (active) => {
     }, HOLD_START_DELAY_MS);
     return;
   }
-  holdKeyActive = false;
-  if (holdStartTimer) {
-    clearTimeout(holdStartTimer);
-    holdStartTimer = null;
-    return;
-  }
-  if (recordingStartInProgress) {
-    stopRecordingAfterStart = true;
-    return;
-  }
-  if (recordingActive) {
-    void stopRecording();
+  switch (resolvePushToTalkReleaseDisposition({
+    holdStartPending: Boolean(holdStartTimer),
+    recordingActive,
+    recordingStartInProgress
+  })) {
+    case "cancel-pending-start":
+      holdKeyActive = false;
+      if (holdStartTimer) {
+        clearTimeout(holdStartTimer);
+        holdStartTimer = null;
+      }
+      return;
+    case "debounce-release":
+      if (holdReleaseTimer) return;
+      holdReleaseTimer = setTimeout(() => {
+        holdReleaseTimer = null;
+        holdKeyActive = false;
+        if (recordingStartInProgress) {
+          stopRecordingAfterStart = true;
+          return;
+        }
+        if (recordingActive) {
+          void stopRecording();
+        }
+      }, HOLD_RELEASE_DEBOUNCE_MS);
+      holdReleaseTimer.unref?.();
+      return;
+    case "ignore":
+    default:
+      holdKeyActive = false;
+      return;
   }
 };
 const cycleActiveMode = async () => {
@@ -38958,8 +39108,14 @@ const triggerToggleRecording = () => {
     void startRecording();
   }
 };
-const registerHotkeys = async () => {
+const performHotkeyRegistration = async () => {
   if (!hotkeysEnabled) return;
+  logHotkeyDebug("registerHotkeys begin", {
+    pushToTalkKey: settings.pushToTalkKey,
+    toggleRecordingKey: settings.toggleRecordingKey,
+    cancelKey: settings.cancelKey,
+    changeModeShortcut: settings.changeModeShortcut
+  });
   clearHotkeyRegistrationRetry();
   suppressionHotkeys.forEach((key) => globalShortcut.unregister(key));
   suppressionHotkeys.clear();
@@ -38988,10 +39144,17 @@ const registerHotkeys = async () => {
   try {
     hotkeyHandle = await platformAdapter.hotkey.registerHotkey(
       { key: settings.pushToTalkKey, action: "hold" },
-      (active) => handlePushToTalkActive(active)
+      (active) => {
+        logHotkeyDebug("push-to-talk listener callback", { active });
+        handlePushToTalkActive(active);
+      }
     );
+    logHotkeyDebug("push-to-talk registered", { key: settings.pushToTalkKey });
   } catch (error2) {
     recordError(error2);
+    logHotkeyDebug("push-to-talk registration failed", {
+      message: error2 instanceof Error ? error2.message : String(error2)
+    });
     hotkeyHandle = null;
     shouldRetryRegistration = true;
   }
@@ -39007,6 +39170,11 @@ const registerHotkeys = async () => {
   cancelRegistered = registerGlobalShortcut(settings.cancelKey, () => {
     void cancelRecording();
   });
+  logHotkeyDebug("global shortcuts registered", {
+    toggleRegistered,
+    changeModeRegistered,
+    cancelRegistered
+  });
   toggleHandle = null;
   cancelHandle = null;
   changeModeHandle = null;
@@ -39018,6 +39186,21 @@ const registerHotkeys = async () => {
   if (shouldRetryRegistration) {
     scheduleHotkeyRegistrationRetry("one or more global hotkeys failed to bind");
   }
+};
+const registerHotkeys = createCoalescedAsyncRunner(performHotkeyRegistration);
+const enforceStartupHotkeyRegistration = () => {
+  const failureMessage = getHotkeyStartupFailureMessage({
+    platform: process.platform,
+    hotkeysEnabled,
+    isPackaged: app.isPackaged,
+    pushToTalkRegistered: Boolean(hotkeyHandle),
+    pushToTalkKey: settings.pushToTalkKey
+  });
+  if (!failureMessage) return;
+  log$1.error(failureMessage);
+  dialog.showErrorBox("Vocsen hotkey startup failed", failureMessage);
+  app.exit(1);
+  throw new Error(failureMessage);
 };
 const createTranscriptionClientForSettings = () => {
   const baseUrl = process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1/audio";
@@ -39625,6 +39808,7 @@ app.whenReady().then(async () => {
   applyThemeSource();
   updateDockIcon();
   await registerHotkeys();
+  enforceStartupHotkeyRegistration();
   applyLoginItemSettings();
   configureAutoUpdater();
   scheduleUpdateChecks();

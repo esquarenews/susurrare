@@ -1,4 +1,5 @@
 export * from './ipc';
+export * from './async/coalescedAsyncRunner';
 export * from './domain/schemas';
 export * from './domain/migrations';
 export * from './repositories/types';
@@ -10,7 +11,10 @@ export * from './transcription/client';
 export * from './telemetry/types';
 export * from './recording/stateMachine';
 export * from './recording/limits';
+export * from './recording/hotkeyStartup';
+export * from './recording/pushToTalk';
 export * from './recording/soundWarmPolicy';
+export * from './recording/soundEffectPolicy';
 export * from './security/settings';
 export * from './speechToText/types';
 export * from './speechToText/session';

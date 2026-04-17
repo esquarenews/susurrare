@@ -8,7 +8,6 @@
   "dependencies": {
     "@susurrare/platform": "workspace:*",
     "electron": "^37.10.3",
-    "node-record-lpcm16": "^1.0.1",
-    "uiohook-napi": "^1.5.4"
+    "node-record-lpcm16": "^1.0.1"
   }
 }

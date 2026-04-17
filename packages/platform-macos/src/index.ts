@@ -1,6 +1,10 @@
 import { createRequire } from 'module';
-import { execFile } from 'child_process';
-import { BrowserWindow, clipboard, screen, systemPreferences } from 'electron';
+import { execFile, spawn } from 'child_process';
+import { createInterface } from 'readline';
+import { existsSync } from 'fs';
+import { dirname, join, resolve } from 'path';
+import { fileURLToPath } from 'url';
+import { BrowserWindow, app, clipboard, screen, systemPreferences } from 'electron';
 import {
   getOverlayDefaultPosition,
   getOverlayStatusLabel,
@@ -23,26 +27,6 @@ type RecordModule = {
 const require = createRequire(import.meta.url);
 const record = require('node-record-lpcm16') as RecordModule;
 
-type IOHookEvent = {
-  keycode: number;
-  shiftKey: boolean;
-  ctrlKey: boolean;
-  altKey: boolean;
-  metaKey: boolean;
-};
-
-type IOHook = {
-  on(event: 'keydown' | 'keyup', callback: (event: IOHookEvent) => void): void;
-  start(): void;
-  stop(): void;
-};
-
-type UiohookModule = {
-  uIOhook: IOHook;
-  UiohookKey: Record<string, number>;
-};
-
-let uiohookModule: UiohookModule | null = null;
 let accessibilityPromptAttempted = false;
 
 const hasAccessibilityAccess = () => systemPreferences.isTrustedAccessibilityClient(false);
@@ -72,51 +56,6 @@ const mapMicrophoneAccess = () => {
   }
 };
 
-const loadUiohook = (): UiohookModule => {
-  if (uiohookModule) return uiohookModule;
-  let loaded: UiohookModule;
-  try {
-    loaded = require('uiohook-napi') as UiohookModule;
-  } catch (error) {
-    const details = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `uiohook-napi failed to load. Rebuild it for Electron (pnpm dlx electron-rebuild -f -w uiohook-napi). ${details}`
-    );
-  }
-  uiohookModule = loaded;
-  return loaded;
-};
-
-type HotkeyRegistration = {
-  keycode: number;
-  modifiers: {
-    shift: boolean;
-    control: boolean;
-    alt: boolean;
-    meta: boolean;
-  };
-  action: 'hold' | 'toggle';
-  listener: (active: boolean) => void;
-  active: boolean;
-};
-
-const registrations = new Set<HotkeyRegistration>();
-let hookStarted = false;
-let hookAttached = false;
-
-const startHook = () => {
-  if (hookStarted) return;
-  requireAccessibilityAccess(true);
-  loadUiohook().uIOhook.start();
-  hookStarted = true;
-};
-
-const stopHook = () => {
-  if (!hookStarted) return;
-  loadUiohook().uIOhook.stop();
-  hookStarted = false;
-};
-
 const pause = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
@@ -133,84 +72,44 @@ const runOsaScript = (script: string) =>
     });
   });
 
-const normalizeShortcut = (shortcut: string) => {
-  const tokens = shortcut
-    .split('+')
-    .map((token) => token.trim())
-    .filter(Boolean);
-  const modifiers = new Set(tokens.map((token) => token.toLowerCase()));
-  const mainKey = tokens[tokens.length - 1]?.toLowerCase() ?? '';
-  return { modifiers, mainKey };
-};
+const HOTKEY_HELPER_NAME = 'vocsen-hotkey-helper';
+const hotkeyHelperModuleDir = dirname(fileURLToPath(import.meta.url));
 
-const resolveKeycode = (key: string) => {
-  const normalized = key.replace(/\s+/g, '').toUpperCase();
-  const aliases: Record<string, string> = {
-    ESC: 'Escape',
-    ESCAPE: 'Escape',
-    RETURN: 'Enter',
-    ENTER: 'Enter',
-    SPACE: 'Space',
-    TAB: 'Tab',
-    BACKSPACE: 'Backspace',
-    DELETE: 'Delete',
-    DEL: 'Delete',
-  };
-  const candidate =
-    (loadUiohook().UiohookKey as Record<string, number>)[normalized] ??
-    (aliases[normalized]
-      ? (loadUiohook().UiohookKey as Record<string, number>)[aliases[normalized]]
-      : undefined);
-  if (candidate === undefined) {
-    throw new Error(`Unsupported hotkey: ${key}`);
+const resolveHotkeyHelperPath = () => {
+  const candidates = [
+    process.env.SUSURRARE_HOTKEY_HELPER_PATH,
+    join(process.resourcesPath, 'bin', HOTKEY_HELPER_NAME),
+    join(app.getAppPath(), 'resources', 'bin', HOTKEY_HELPER_NAME),
+    join(process.cwd(), 'resources', 'bin', HOTKEY_HELPER_NAME),
+    join(process.cwd(), 'apps', 'desktop', 'resources', 'bin', HOTKEY_HELPER_NAME),
+    resolve(hotkeyHelperModuleDir, '..', '..', '..', 'apps', 'desktop', 'resources', 'bin', HOTKEY_HELPER_NAME),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  const helperPath = candidates.find((candidate) => existsSync(candidate));
+  if (!helperPath) {
+    throw new Error(
+      'Vocsen hotkey helper is missing. Run `pnpm -C apps/desktop build` to compile the macOS hold-to-talk helper.'
+    );
   }
-  return candidate;
+  return helperPath;
 };
 
-const matchesRegistration = (
-  event: {
-    keycode: number;
-    shiftKey: boolean;
-    ctrlKey: boolean;
-    altKey: boolean;
-    metaKey: boolean;
-  },
-  registration: HotkeyRegistration
-) => {
-  if (event.keycode !== registration.keycode) return false;
-  if (event.shiftKey !== registration.modifiers.shift) return false;
-  if (event.ctrlKey !== registration.modifiers.control) return false;
-  if (event.altKey !== registration.modifiers.alt) return false;
-  if (event.metaKey !== registration.modifiers.meta) return false;
-  return true;
-};
-
-const ensureHookHandlers = () => {
-  if (hookAttached) return;
-  hookAttached = true;
-  loadUiohook().uIOhook.on('keydown', (event) => {
-    registrations.forEach((registration) => {
-      if (!matchesRegistration(event, registration)) return;
-      if (registration.action === 'hold') {
-        if (!registration.active) {
-          registration.active = true;
-          registration.listener(true);
-        }
-        return;
-      }
-      registration.active = !registration.active;
-      registration.listener(registration.active);
-    });
-  });
-  loadUiohook().uIOhook.on('keyup', (event) => {
-    registrations.forEach((registration) => {
-      if (registration.action !== 'hold') return;
-      if (!registration.active) return;
-      if (!matchesRegistration(event, registration)) return;
-      registration.active = false;
-      registration.listener(false);
-    });
-  });
+const parseHelperMessage = (line: string) => {
+  try {
+    const parsed = JSON.parse(line) as { type?: string; active?: boolean; message?: string };
+    if (parsed.type === 'ready') {
+      return { type: 'ready' as const };
+    }
+    if (parsed.type === 'state' && typeof parsed.active === 'boolean') {
+      return { type: 'state' as const, active: parsed.active };
+    }
+    if (parsed.type === 'error' && typeof parsed.message === 'string') {
+      return { type: 'error' as const, message: parsed.message };
+    }
+  } catch {
+    // ignore malformed helper output
+  }
+  return null;
 };
 
 const DEFAULT_SAMPLE_RATE = 16000;
@@ -910,30 +809,107 @@ const concatChunks = (chunks: Uint8Array[]) => {
 export const macosAdapter: PlatformAdapter = {
   hotkey: {
     async registerHotkey(config, listener) {
-      ensureHookHandlers();
-      const { modifiers, mainKey } = normalizeShortcut(config.key);
-      const registration: HotkeyRegistration = {
-        keycode: resolveKeycode(mainKey),
-        modifiers: {
-          shift: modifiers.has('shift'),
-          control: modifiers.has('ctrl') || modifiers.has('control'),
-          alt: modifiers.has('alt') || modifiers.has('option'),
-          meta: modifiers.has('cmd') || modifiers.has('command') || modifiers.has('meta'),
-        },
-        action: config.action,
-        listener,
-        active: false,
-      };
-      registrations.add(registration);
-      startHook();
-      return {
-        async unregister() {
-          registrations.delete(registration);
-          if (registrations.size === 0) {
-            stopHook();
+      requireAccessibilityAccess(true);
+      const helperPath = resolveHotkeyHelperPath();
+      const helper = spawn(helperPath, ['--shortcut', config.key], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      const output = createInterface({ input: helper.stdout });
+      const stderrChunks: string[] = [];
+      let active = false;
+      let ready = false;
+
+      return await new Promise((resolvePromise, rejectPromise) => {
+        const readyTimeout = setTimeout(() => {
+          cleanup();
+          rejectPromise(new Error('Vocsen hotkey helper timed out while registering the hotkey.'));
+        }, 3000);
+
+        const fail = (message: string) => {
+          clearTimeout(readyTimeout);
+          cleanup();
+          rejectPromise(new Error(message));
+        };
+
+        const cleanup = () => {
+          output.removeAllListeners();
+          helper.stdout.removeAllListeners();
+          helper.stderr.removeAllListeners();
+          helper.removeAllListeners();
+          output.close();
+        };
+
+        helper.stderr.on('data', (chunk) => {
+          stderrChunks.push(chunk.toString());
+        });
+
+        output.on('line', (line) => {
+          const message = parseHelperMessage(line);
+          if (!message) return;
+          if (message.type === 'ready') {
+            if (ready) return;
+            ready = true;
+            clearTimeout(readyTimeout);
+            resolvePromise({
+              async unregister() {
+                clearTimeout(readyTimeout);
+                cleanup();
+                if (helper.exitCode !== null || helper.killed) return;
+                await new Promise<void>((resolveStop) => {
+                  const killTimer = setTimeout(() => {
+                    if (helper.exitCode === null && !helper.killed) {
+                      try {
+                        helper.kill('SIGKILL');
+                      } catch {
+                        // ignore kill failures for already-exited helpers
+                      }
+                    }
+                  }, 250);
+                  killTimer.unref?.();
+                  helper.once('exit', () => {
+                    clearTimeout(killTimer);
+                    resolveStop();
+                  });
+                  try {
+                    helper.kill('SIGTERM');
+                  } catch {
+                    clearTimeout(killTimer);
+                    resolveStop();
+                  }
+                });
+              },
+            });
+            return;
           }
-        },
-      };
+          if (message.type === 'error') {
+            fail(message.message);
+            return;
+          }
+          if (message.type === 'state') {
+            if (config.action === 'hold') {
+              listener(message.active);
+              return;
+            }
+            if (message.active) {
+              active = !active;
+              listener(active);
+            }
+          }
+        });
+
+        helper.once('exit', (code, signal) => {
+          if (ready) return;
+          const stderr = stderrChunks.join('').trim();
+          fail(
+            stderr ||
+              `Vocsen hotkey helper exited before becoming ready (code=${code ?? 'null'}, signal=${signal ?? 'null'}).`
+          );
+        });
+
+        helper.once('error', (error) => {
+          fail(error instanceof Error ? error.message : String(error));
+        });
+      });
     },
   },
   audioCapture: {

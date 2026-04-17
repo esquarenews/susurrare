@@ -40,9 +40,8 @@ Tip: disable global hotkeys in CI/tests with `SUSURRARE_DISABLE_HOTKEYS=1`.
 
 ## Native dependencies (macOS)
 - SoX is required for microphone capture: `brew install sox`
-- Global hotkeys use `uiohook-napi` and must be rebuilt for Electron:
-  - `pnpm dlx electron-rebuild -f -w uiohook-napi -v 31.7.7 -p apps/desktop`
-  - If `node-gyp` fails, install Python 3.11 (distutils) and Xcode CLI tools.
+- The global hold-to-talk helper is compiled automatically during `pnpm dev` and `pnpm -C apps/desktop build`.
+- If the helper fails to register on macOS in development, Vocsen exits immediately so you do not continue with a broken F15 path.
 
 ## Packaging (macOS)
 - Build app: `pnpm -C apps/desktop dist`
