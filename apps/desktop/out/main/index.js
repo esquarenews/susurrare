@@ -37909,12 +37909,23 @@ let trayRecordingState = "idle";
 const SILENCE_RMS_THRESHOLD = 0.012;
 const RECORDING_LIMIT_WARNING_WINDOW_MS = 6e4;
 const RECORDING_LIMIT_MIN_WARNING_MS = 5e3;
+const ACTIVE_APP_CAPTURE_TIMEOUT_MS = 200;
 const APP_BRAND_NAME = "Vocsen";
 const SOUND_WARM_STALE_AFTER_MS = 1e3 * 60 * 6;
 const SOUND_WARM_MIN_INTERVAL_MS = 800;
 const SOUND_WARM_MAINTENANCE_INTERVAL_MS = 1e3 * 60 * 2;
 let soundWarmTimer = null;
 let recordingTargetAppName = null;
+let recordingStartedAt = 0;
+let recordingChunkCount = 0;
+const logHotkeyDebug = (message, details) => {
+  if (app.isPackaged) return;
+  if (details) {
+    log$1.info(`[hotkey] ${message}`, details);
+    return;
+  }
+  log$1.info(`[hotkey] ${message}`);
+};
 const shouldShowOverlay = () => settings.overlayStyle !== "hide";
 const ensureMicrophoneAccess = async () => {
   if (process.platform !== "darwin") return true;
@@ -38492,6 +38503,22 @@ const sendRecordingStatus = (status, message) => {
 const pause = (ms2) => new Promise((resolve2) => {
   setTimeout(resolve2, ms2);
 });
+const captureRecordingTargetAppName = async () => {
+  const timeoutResult = Symbol("active-app-timeout");
+  try {
+    const result = await Promise.race([
+      platformAdapter.app.activeName(),
+      pause(ACTIVE_APP_CAPTURE_TIMEOUT_MS).then(() => timeoutResult)
+    ]);
+    if (result === timeoutResult) {
+      recordingTargetAppName = null;
+      return;
+    }
+    recordingTargetAppName = typeof result === "string" && result.trim().length ? result : null;
+  } catch {
+    recordingTargetAppName = null;
+  }
+};
 const computeRms = (data) => {
   if (data.length < 2) return 0;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -38574,16 +38601,18 @@ const startRecording = async () => {
   if (recordingActive || recordingStartInProgress) return;
   recordingStartInProgress = true;
   try {
+    logHotkeyDebug("startRecording begin", {
+      holdKeyActive,
+      recordingActive,
+      recordingStartInProgress
+    });
     if (!await ensureMicrophoneAccess()) {
       sendRecordingStatus("error", "Microphone access is required to start recording.");
       return;
     }
     playSoundEffect("start");
-    try {
-      recordingTargetAppName = await platformAdapter.app.activeName();
-    } catch {
-      recordingTargetAppName = null;
-    }
+    recordingTargetAppName = null;
+    void captureRecordingTargetAppName();
     if (overlayHideTimer) {
       clearTimeout(overlayHideTimer);
       overlayHideTimer = null;
@@ -38608,8 +38637,11 @@ const startRecording = async () => {
       await platformAdapter.overlay.hide();
     }
     recordingActive = true;
+    recordingStartedAt = Date.now();
+    recordingChunkCount = 0;
     silenceStopRequested = false;
     lastSoundAt = Date.now();
+    logHotkeyDebug("recording active");
     sendRecordingStatus("recording");
     const sampleRate = streamingEnabled ? 24e3 : 16e3;
     const safeUploadLimitMs = estimateSafeOpenAiTranscriptionDurationMs(sampleRate);
@@ -38639,6 +38671,15 @@ const startRecording = async () => {
       try {
         for await (const chunk of stream2) {
           if (!recordingActive) break;
+          recordingChunkCount += 1;
+          if (recordingChunkCount <= 3) {
+            logHotkeyDebug("audio chunk received", {
+              chunk: recordingChunkCount,
+              durationMs: chunk.durationMs ?? null,
+              rms: typeof chunk.rms === "number" ? Number(chunk.rms.toFixed(5)) : null,
+              elapsedMs: Date.now() - recordingStartedAt
+            });
+          }
           if (!streamingEnabled && safeUploadLimitMs > 0) {
             const elapsedMs = Date.now() - startedAt;
             if (!recordingLimitWarningShown && elapsedMs >= safeWarningAtMs) {
@@ -38698,6 +38739,11 @@ const startRecording = async () => {
     }
     await platformAdapter.overlay.hide();
   } finally {
+    logHotkeyDebug("startRecording end", {
+      recordingActive,
+      recordingStartInProgress,
+      stopRecordingAfterStart
+    });
     recordingStartInProgress = false;
     if (stopRecordingAfterStart) {
       stopRecordingAfterStart = false;
@@ -38709,6 +38755,10 @@ const startRecording = async () => {
 };
 const stopRecording = async () => {
   if (!recordingActive || recordingStopInProgress) return;
+  logHotkeyDebug("stopRecording begin", {
+    elapsedMs: recordingStartedAt ? Date.now() - recordingStartedAt : null,
+    recordingChunkCount
+  });
   recordingStopInProgress = true;
   try {
     playSoundEffect("end");
@@ -38772,6 +38822,13 @@ const cancelRecording = async () => {
   }
 };
 const handlePushToTalkActive = (active) => {
+  logHotkeyDebug("push-to-talk state", {
+    active,
+    holdKeyActive,
+    recordingActive,
+    recordingStartInProgress,
+    holdStartTimer: Boolean(holdStartTimer)
+  });
   if (active) {
     holdKeyActive = true;
     stopRecordingAfterStart = false;
