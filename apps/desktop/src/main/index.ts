@@ -1203,6 +1203,7 @@ const registerHotkeys = async () => {
   }
   changeModeHandle = null;
   let shouldRetryRegistration = false;
+  const useLowLevelMacHotkeys = process.platform === 'darwin';
   try {
     hotkeyHandle = await platformAdapter.hotkey.registerHotkey(
       { key: settings.pushToTalkKey, action: 'hold' },
@@ -1217,19 +1218,77 @@ const registerHotkeys = async () => {
   // Hold-to-talk must stay on the low-level hook only. Electron global shortcuts
   // do not expose key-up, so a fallback here degrades into toggle behavior.
 
-  // These actions are edge-triggered and work reliably with Electron's global shortcuts.
-  const toggleRegistered = registerGlobalShortcut(settings.toggleRecordingKey, () => {
-    triggerToggleRecording();
-  });
-  const changeModeRegistered = registerGlobalShortcut(settings.changeModeShortcut, () => {
-    void cycleActiveMode();
-  });
-  const cancelRegistered = registerGlobalShortcut(settings.cancelKey, () => {
-    void cancelRecording();
-  });
+  let toggleRegistered = false;
+  let changeModeRegistered = false;
+  let cancelRegistered = false;
+  const registerLowLevelToggle = async (
+    accelerator: string | undefined,
+    assign: (handle: { unregister: () => Promise<void> } | null) => void,
+    handler: () => void
+  ) => {
+    if (!accelerator) {
+      assign(null);
+      return true;
+    }
+    try {
+      assign(
+        await platformAdapter.hotkey.registerHotkey({ key: accelerator, action: 'toggle' }, () => {
+          handler();
+        })
+      );
+      return true;
+    } catch (error) {
+      recordError(error);
+      assign(null);
+      shouldRetryRegistration = true;
+      return false;
+    }
+  };
 
-  toggleHandle = null;
-  cancelHandle = null;
+  if (useLowLevelMacHotkeys && hotkeyHandle) {
+    toggleRegistered = await registerLowLevelToggle(
+      settings.toggleRecordingKey,
+      (handle) => {
+        toggleHandle = handle;
+      },
+      () => {
+        triggerToggleRecording();
+      }
+    );
+    changeModeRegistered = await registerLowLevelToggle(
+      settings.changeModeShortcut,
+      (handle) => {
+        changeModeHandle = handle;
+      },
+      () => {
+        void cycleActiveMode();
+      }
+    );
+    cancelRegistered = await registerLowLevelToggle(
+      settings.cancelKey,
+      (handle) => {
+        cancelHandle = handle;
+      },
+      () => {
+        void cancelRecording();
+      }
+    );
+  } else {
+    // These actions are edge-triggered and work reliably with Electron's global shortcuts.
+    toggleRegistered = registerGlobalShortcut(settings.toggleRecordingKey, () => {
+      triggerToggleRecording();
+    });
+    changeModeRegistered = registerGlobalShortcut(settings.changeModeShortcut, () => {
+      void cycleActiveMode();
+    });
+    cancelRegistered = registerGlobalShortcut(settings.cancelKey, () => {
+      void cancelRecording();
+    });
+    toggleHandle = null;
+    cancelHandle = null;
+    changeModeHandle = null;
+  }
+
   if (hotkeyHandle && toggleRegistered && changeModeRegistered && cancelRegistered) {
     hotkeyRetryAttempt = 0;
     return;
