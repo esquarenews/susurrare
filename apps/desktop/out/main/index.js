@@ -22399,7 +22399,7 @@ const requireAccessibilityAccess = (prompt = false) => {
     if (hasAccessibilityAccess()) return;
   }
   throw new Error(
-    "Accessibility access is required for low-level hotkeys on macOS. Open System Settings > Privacy & Security > Accessibility and Input Monitoring, then grant access to Electron."
+    "Accessibility access is required for low-level hotkeys on macOS. Open System Settings > Privacy & Security > Accessibility and Input Monitoring, then grant access to Vocsen. In development builds, the entry may appear as Vocsen or Electron."
   );
 };
 const mapMicrophoneAccess = () => {
@@ -23401,7 +23401,7 @@ const macosAdapter = {
       };
     },
     async requestGuidance() {
-      return "Open System Settings > Privacy & Security to grant microphone and accessibility access. For development builds, grant access to Electron. If text is copied but not pasted, also allow Electron to control System Events under Automation. Microphone permission is requested when you start recording.";
+      return "Open System Settings > Privacy & Security to grant microphone and accessibility access to Vocsen. In development builds, the entry may appear as Vocsen or Electron. If text is copied but not pasted, also allow Vocsen or Electron to control System Events under Automation. Microphone permission is requested when you start recording.";
     }
   }
 };
@@ -37898,6 +37898,9 @@ let overlayHideTimer = null;
 let modeOverlayTimer = null;
 let lastOverlayPartial = "";
 const suppressionHotkeys = /* @__PURE__ */ new Set();
+const HOTKEY_REGISTRATION_RETRY_DELAYS_MS = [300, 1e3, 2500, 5e3];
+let hotkeyRetryTimer = null;
+let hotkeyRetryAttempt = 0;
 let lastSoundAt = 0;
 let silenceStopRequested = false;
 let trayRecordingState = "idle";
@@ -38842,14 +38845,38 @@ const attachLocalHotkeys = (win) => {
   });
 };
 const registerGlobalShortcut = (accelerator, handler) => {
-  if (!accelerator) return;
+  if (!accelerator) return true;
   try {
     if (globalShortcut.register(accelerator, handler)) {
       suppressionHotkeys.add(accelerator);
+      return true;
     }
+    recordError(new Error(`Unable to register global shortcut: ${accelerator}`));
   } catch (error2) {
     recordError(error2);
   }
+  return false;
+};
+const clearHotkeyRegistrationRetry = () => {
+  if (!hotkeyRetryTimer) return;
+  clearTimeout(hotkeyRetryTimer);
+  hotkeyRetryTimer = null;
+};
+const scheduleHotkeyRegistrationRetry = (reason) => {
+  if (!hotkeysEnabled || hotkeyRetryTimer) return;
+  const delay2 = HOTKEY_REGISTRATION_RETRY_DELAYS_MS[hotkeyRetryAttempt];
+  if (delay2 === void 0) {
+    log$1.warn(`Hotkey registration retries exhausted: ${reason}`);
+    return;
+  }
+  hotkeyRetryAttempt += 1;
+  log$1.warn(
+    `Retrying hotkey registration in ${delay2}ms (attempt ${hotkeyRetryAttempt}/${HOTKEY_REGISTRATION_RETRY_DELAYS_MS.length}): ${reason}`
+  );
+  hotkeyRetryTimer = setTimeout(() => {
+    hotkeyRetryTimer = null;
+    void registerHotkeys();
+  }, delay2);
 };
 const triggerToggleRecording = () => {
   if (recordingActive) {
@@ -38860,6 +38887,7 @@ const triggerToggleRecording = () => {
 };
 const registerHotkeys = async () => {
   if (!hotkeysEnabled) return;
+  clearHotkeyRegistrationRetry();
   suppressionHotkeys.forEach((key) => globalShortcut.unregister(key));
   suppressionHotkeys.clear();
   try {
@@ -38883,6 +38911,7 @@ const registerHotkeys = async () => {
     recordError(error2);
   }
   changeModeHandle = null;
+  let shouldRetryRegistration = false;
   try {
     hotkeyHandle = await platformAdapter.hotkey.registerHotkey(
       { key: settings.pushToTalkKey, action: "hold" },
@@ -38891,19 +38920,27 @@ const registerHotkeys = async () => {
   } catch (error2) {
     recordError(error2);
     hotkeyHandle = null;
+    shouldRetryRegistration = true;
   }
-  registerGlobalShortcut(settings.toggleRecordingKey, () => {
+  const toggleRegistered = registerGlobalShortcut(settings.toggleRecordingKey, () => {
     triggerToggleRecording();
   });
-  registerGlobalShortcut(settings.changeModeShortcut, () => {
+  const changeModeRegistered = registerGlobalShortcut(settings.changeModeShortcut, () => {
     void cycleActiveMode();
   });
-  registerGlobalShortcut(settings.cancelKey, () => {
+  const cancelRegistered = registerGlobalShortcut(settings.cancelKey, () => {
     void cancelRecording();
   });
   toggleHandle = null;
   cancelHandle = null;
-  return;
+  if (hotkeyHandle && toggleRegistered && changeModeRegistered && cancelRegistered) {
+    hotkeyRetryAttempt = 0;
+    return;
+  }
+  shouldRetryRegistration ||= !toggleRegistered || !changeModeRegistered || !cancelRegistered;
+  if (shouldRetryRegistration) {
+    scheduleHotkeyRegistrationRetry("one or more global hotkeys failed to bind");
+  }
 };
 const createTranscriptionClientForSettings = () => {
   const baseUrl = process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1/audio";
@@ -39125,7 +39162,7 @@ const initSpeechSession = () => {
       if (!result.success && result.method === "clipboard") {
         sendRecordingStatus(
           "error",
-          "Could not paste into the target app. Text was copied to the clipboard. Grant Accessibility and Automation access to Electron and allow control of System Events."
+          "Could not paste into the target app. Text was copied to the clipboard. Grant Accessibility and Automation access to Vocsen. In development builds, the entry may still appear as Vocsen or Electron. Also allow control of System Events."
         );
       }
       return result;
@@ -39497,14 +39534,20 @@ app.whenReady().then(async () => {
   warmSoundPlayer({ force: true });
   scheduleSoundWarmMaintenance();
   if (process.platform === "darwin") {
-    powerMonitor.on("resume", () => warmSoundPlayer({ force: true }));
-    powerMonitor.on("unlock-screen", () => warmSoundPlayer({ force: true }));
+    powerMonitor.on("resume", () => {
+      warmSoundPlayer({ force: true });
+      void registerHotkeys();
+    });
+    powerMonitor.on("unlock-screen", () => {
+      warmSoundPlayer({ force: true });
+      void registerHotkeys();
+    });
   }
   updatePipelineContext();
   initSpeechSession();
   applyThemeSource();
   updateDockIcon();
-  void registerHotkeys();
+  await registerHotkeys();
   applyLoginItemSettings();
   configureAutoUpdater();
   scheduleUpdateChecks();
@@ -39519,6 +39562,7 @@ app.whenReady().then(async () => {
   nativeTheme.on("updated", updateTrayIcon);
   sendHistoryUpdated();
   app.on("activate", () => {
+    void registerHotkeys();
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
     if (!recordingActive) {
       if (shouldShowOverlay()) {

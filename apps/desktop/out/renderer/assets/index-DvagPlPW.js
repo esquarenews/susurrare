@@ -11053,7 +11053,7 @@ const buildPermissionNotices = (permissions) => {
     notices.push({
       id: "accessibility",
       title: "Global hold-to-talk is unavailable",
-      body: "Grant Accessibility and Input Monitoring access to Electron to enable low-level push-to-talk detection. If text is copied but not pasted, also allow Electron to control System Events under Automation."
+      body: "Grant Accessibility and Input Monitoring access to Vocsen to enable low-level push-to-talk detection. In development builds, the entry may appear as Vocsen or Electron. If text is copied but not pasted, also allow Vocsen or Electron to control System Events under Automation."
     });
   }
   if (permissions.microphone !== "granted") {

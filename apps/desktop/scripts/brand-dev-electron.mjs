@@ -59,4 +59,5 @@ for (const [key, value] of Object.entries(plistUpdates)) {
 }
 
 run('/usr/bin/touch', [appBundlePath]);
+run('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', appBundlePath]);
 console.log(`[brand-dev-electron] Branded dev host bundle at ${appBundlePath}`);
