@@ -58,12 +58,12 @@
     "node-record-lpcm16": "^1.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "ws": "^8.18.0",
+    "ws": "^8.21.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@electron/notarize": "^2.2.0",
-    "@playwright/test": "^1.47.2",
+    "@playwright/test": "^1.61.1",
     "@types/archiver": "^5.3.4",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
@@ -73,10 +73,10 @@
     "electron": "^37.10.3",
     "electron-builder": "^26.7.0",
     "electron-builder-squirrel-windows": "26.7.0",
-    "electron-log": "^5.2.0",
-    "electron-updater": "^6.7.3",
+    "electron-log": "^5.4.4",
+    "electron-updater": "^6.8.9",
     "electron-vite": "^2.3.0",
-    "playwright": "^1.47.2",
+    "playwright": "^1.61.1",
     "typescript": "5.5.4",
     "vite": "^5.4.10"
   }

@@ -1,3 +1,19 @@
+@font-face {
+  font-family: 'Notae Sans';
+  src: url('/fonts/NotaeSans-Variable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Notae Sans';
+  src: url('/fonts/NotaeSans-Italic-Variable.woff2') format('woff2');
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
   --bg: #f2f1ee;
@@ -19,8 +35,8 @@
   --field-width-wide: 28rem;
   --focus-ring: 0 0 0 3px rgba(26, 139, 125, 0.18);
   --shadow: 0 24px 80px rgba(23, 29, 28, 0.1);
-  --font-sans: 'Manrope', system-ui, sans-serif;
-  --font-serif: 'Fraunces', 'Georgia', serif;
+  --font-sans: 'Notae Sans', system-ui, sans-serif;
+  --font-serif: 'Notae Sans', system-ui, sans-serif;
   --type-micro: 10px;
   --type-caption: 11px;
   --type-ui: 12px;

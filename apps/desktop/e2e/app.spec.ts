@@ -14,9 +14,16 @@ test('navigation and CRUD basics', async () => {
       SUSURRARE_DISABLE_HOTKEYS: '1',
     },
   });
-  const page = await app.firstWindow();
+  await app.firstWindow();
+  const page = await app.waitForEvent('window');
+  await page.waitForURL('**/out/renderer/index.html');
 
   try {
+    await page.evaluate(() => document.fonts.ready);
+    await expect
+      .poll(() => page.evaluate(() => document.fonts.check('13px "Notae Sans"')))
+      .toBe(true);
+
     await page.getByRole('button', { name: 'Modes' }).click();
     await expect(page.getByRole('heading', { name: /^Modes\b/ })).toBeVisible();
 
