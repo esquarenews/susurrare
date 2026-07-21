@@ -218,8 +218,12 @@ const extractOpenAiTranscriptionPayload = async (response: Response) => {
   let text = '';
   let segments: DiarizedSegment[] | undefined;
   if (contentType.includes('application/json')) {
-    const data = (await response.json()) as { text?: string; segments?: unknown };
-    text = data.text ?? '';
+    const data = (await response.json()) as {
+      text?: string;
+      transcript?: string;
+      segments?: unknown;
+    };
+    text = data.text ?? data.transcript ?? '';
     segments = normalizeSegments(data.segments);
   } else {
     text = await response.text();

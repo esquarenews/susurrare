@@ -135,6 +135,35 @@ describe('transcription client', () => {
     ]);
   });
 
+  it('accepts transcript as an alternative OpenAI HTTP payload field', async () => {
+    const fetcher = vi.fn(async () =>
+      new Response(JSON.stringify({ transcript: 'alternate field text' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+
+    const client = createTranscriptionClient({
+      baseUrl: 'https://api.openai.com/v1/audio',
+      apiKey: 'test-key',
+      fetcher,
+      websocketFactory: vi.fn(),
+    });
+
+    const events = await client.transcribe({
+      audio: new Uint8Array([1, 2, 3, 4]),
+      model: { selection: 'fast' },
+      sampleRate: 16000,
+    });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        kind: 'final',
+        text: 'alternate field text',
+      }),
+    ]);
+  });
+
   it('retries transient OpenAI 520 failures and succeeds on a later attempt', async () => {
     const fetcher = vi
       .fn()

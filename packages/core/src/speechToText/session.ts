@@ -40,6 +40,7 @@ type StreamingSegmentState = {
 };
 
 const STREAMING_SEGMENT_ROTATION_MS = 8 * 60 * 1000;
+const EMPTY_TRANSCRIPT_MIN_AUDIO_MS = 1500;
 
 const concatChunks = (chunks: Uint8Array[]) => {
   const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
@@ -542,6 +543,16 @@ export const createSpeechToTextSession = (
 
     if (!finalText && streamingText?.trim()) {
       finalText = streamingText.trim();
+    }
+
+    if (!finalText?.trim() && !diarizedSegments?.length && audioDurationMs >= EMPTY_TRANSCRIPT_MIN_AUDIO_MS) {
+      await finalizeWithError(
+        new Error('No transcript was returned for the recorded audio. Check microphone input and try again.'),
+        'no_transcript'
+      );
+      reset();
+      state = 'idle';
+      return;
     }
 
     rawTranscriptText = finalText ?? '';

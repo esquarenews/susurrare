@@ -21245,7 +21245,7 @@ const extractOpenAiTranscriptionPayload = async (response) => {
   let segments;
   if (contentType.includes("application/json")) {
     const data = await response.json();
-    text = data.text ?? "";
+    text = data.text ?? data.transcript ?? "";
     segments = normalizeSegments(data.segments);
   } else {
     text = await response.text();
@@ -21722,6 +21722,7 @@ objectType({
   method: enumType(["accessibility", "clipboard"]).optional()
 });
 const STREAMING_SEGMENT_ROTATION_MS = 8 * 60 * 1e3;
+const EMPTY_TRANSCRIPT_MIN_AUDIO_MS = 1500;
 const concatChunks$1 = (chunks) => {
   const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
   const merged = new Uint8Array(total);
@@ -22170,6 +22171,15 @@ const createSpeechToTextSession = (deps) => {
     }
     if (!finalText && streamingText?.trim()) {
       finalText = streamingText.trim();
+    }
+    if (!finalText?.trim() && !diarizedSegments?.length && audioDurationMs >= EMPTY_TRANSCRIPT_MIN_AUDIO_MS) {
+      await finalizeWithError(
+        new Error("No transcript was returned for the recorded audio. Check microphone input and try again."),
+        "no_transcript"
+      );
+      reset();
+      state2 = "idle";
+      return;
     }
     rawTranscriptText = finalText ?? "";
     if (diarizedSegments && diarizedSegments.length) {

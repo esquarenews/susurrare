@@ -483,4 +483,37 @@ describe('speech-to-text golden path', () => {
 
     expect(observed).toEqual([]);
   });
+
+  it('treats a long blank transcription as an error instead of a successful empty insert', async () => {
+    const events: SpeechToTextEvent[] = [];
+    const insertText = vi.fn(async () => ({ success: true, method: 'accessibility' as const }));
+
+    const session = createSpeechToTextSession({
+      transcription: {
+        transcribe: vi.fn(async () => [
+          { kind: 'final' as const, text: '', timestamp: Date.now() },
+        ]),
+        stream: vi.fn(async () => undefined),
+      },
+      insertText,
+      clipboard: vi.fn(async () => undefined),
+      history: { add: vi.fn(async () => undefined) },
+      pipelineContext: baseContext,
+    });
+
+    session.onEvent((event) => events.push(event));
+
+    await session.start({ model: { selection: 'fast' }, streamingEnabled: false });
+    session.pushAudioChunk({ data: new Uint8Array(64000), timestamp: Date.now(), durationMs: 2000 });
+    await session.finalize();
+
+    expect(insertText).not.toHaveBeenCalled();
+    const errorEvent = events.find(
+      (event) => event.type === 'error' && 'code' in event && event.code === 'no_transcript'
+    );
+    const completed = events.find((event) => event.type === 'completed');
+
+    expect(errorEvent).toBeTruthy();
+    expect(completed && 'outcome' in completed ? completed.outcome.status : null).toBe('error');
+  });
 });
