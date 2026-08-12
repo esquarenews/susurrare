@@ -3,7 +3,7 @@ export const DEFAULT_PCM_BYTES_PER_SAMPLE = 2;
 export const DEFAULT_SAFE_HEADROOM_BYTES = 512 * 1024;
 export const DEFAULT_RECORDING_TIMEOUT_MS = 60_000;
 
-type RecordingModelSelection = 'fast' | 'accurate' | 'meeting' | 'pinned';
+type RecordingModelSelection = 'latest' | 'fast' | 'accurate' | 'meeting' | 'legacy' | 'pinned';
 
 export const estimateOpenAiTranscriptionMaxDurationMs = (
   sampleRate: number,
@@ -40,6 +40,9 @@ export const resolveRecordingStreamingEnabled = (
 ) => {
   if (modelSelection === 'meeting') {
     return true;
+  }
+  if (modelSelection === 'legacy') {
+    return false;
   }
   return configuredStreamingEnabled ?? true;
 };

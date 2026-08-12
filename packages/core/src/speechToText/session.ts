@@ -16,7 +16,9 @@ import type {
 
 export interface SpeechToTextDependencies {
   transcription: TranscriptionClient;
-  insertText: (text: string) => Promise<{ success: boolean; method: 'accessibility' | 'clipboard' }>;
+  insertText: (
+    text: string
+  ) => Promise<{ success: boolean; method: 'accessibility' | 'clipboard' }>;
   clipboard: (text: string) => Promise<void>;
   history: { add: (item: ReturnType<typeof HistoryItemSchema.parse>) => Promise<void> };
   rewriteText?: (text: string, prompt: string) => Promise<string>;
@@ -130,8 +132,10 @@ const resolveModelId = (model: TranscriptionConfig['model']) => {
     }
     return model.pinnedModelId;
   }
+  if (model.selection === 'latest') return 'gpt-transcribe';
   if (model.selection === 'fast') return 'gpt-4o-mini-transcribe';
   if (model.selection === 'meeting') return 'gpt-4o-transcribe-diarize';
+  if (model.selection === 'legacy') return 'whisper-1';
   return 'gpt-4o-transcribe';
 };
 
@@ -150,9 +154,7 @@ const applyPipeline = (
   return { text: output, stepsApplied: steps };
 };
 
-export const createSpeechToTextSession = (
-  deps: SpeechToTextDependencies
-): SpeechToTextSession => {
+export const createSpeechToTextSession = (deps: SpeechToTextDependencies): SpeechToTextSession => {
   let state: SessionState = 'idle';
   let config: TranscriptionConfig | null = null;
   let startedAt = 0;
@@ -208,7 +210,7 @@ export const createSpeechToTextSession = (
         }
       : {
           audio,
-          model: { selection: 'fast' as const },
+          model: { selection: 'latest' as const },
         };
 
   const createStreamingSegment = (startedAudioDurationMs: number): StreamingSegmentState => ({
@@ -270,7 +272,8 @@ export const createSpeechToTextSession = (
             }
           }
           if (parsed.kind === 'final') {
-            segment.finalText = mergeTranscript(segment.finalText, parsed.text) ?? segment.finalText;
+            segment.finalText =
+              mergeTranscript(segment.finalText, parsed.text) ?? segment.finalText;
             if (parsed.segments?.length) {
               segment.diarizedSegments = parsed.segments;
             }
@@ -545,9 +548,15 @@ export const createSpeechToTextSession = (
       finalText = streamingText.trim();
     }
 
-    if (!finalText?.trim() && !diarizedSegments?.length && audioDurationMs >= EMPTY_TRANSCRIPT_MIN_AUDIO_MS) {
+    if (
+      !finalText?.trim() &&
+      !diarizedSegments?.length &&
+      audioDurationMs >= EMPTY_TRANSCRIPT_MIN_AUDIO_MS
+    ) {
       await finalizeWithError(
-        new Error('No transcript was returned for the recorded audio. Check microphone input and try again.'),
+        new Error(
+          'No transcript was returned for the recorded audio. Check microphone input and try again.'
+        ),
         'no_transcript'
       );
       reset();

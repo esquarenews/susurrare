@@ -16,7 +16,7 @@ import {
 import type { Input, MenuItemConstructorOptions } from 'electron';
 import { execFile, spawn } from 'child_process';
 import { join } from 'path';
-import { existsSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 import WebSocket from 'ws';
@@ -119,6 +119,18 @@ const lastSoundEffectAt = {
   end: 0,
 };
 
+const ensureLogDirectory = () => {
+  try {
+    const logsPath = app.getPath('logs');
+    if (logsPath) {
+      mkdirSync(logsPath, { recursive: true });
+    }
+  } catch (error) {
+    // Logging is not guaranteed to be initialized yet, so fall back to stderr.
+    console.error('Failed to create application log directory', error);
+  }
+};
+
 const logHotkeyDebug = (message: string, details?: Record<string, unknown>) => {
   if (app.isPackaged) return;
   log.transports.file({
@@ -161,8 +173,7 @@ const isSameAppName = (first: string | null | undefined, second: string | null |
   return normalizedFirst.length > 0 && normalizedFirst === normalizedSecond;
 };
 
-const quoteAppleScriptString = (value: string) =>
-  value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+const quoteAppleScriptString = (value: string) => value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
 const activateAppByName = async (name: string) => {
   if (process.platform !== 'darwin') return false;
@@ -180,7 +191,12 @@ const stripControlCharacters = (value: string) => {
   let output = '';
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
-    const isControl = (code >= 0 && code <= 8) || code === 11 || code === 12 || (code >= 14 && code <= 31) || code === 127;
+    const isControl =
+      (code >= 0 && code <= 8) ||
+      code === 11 ||
+      code === 12 ||
+      (code >= 14 && code <= 31) ||
+      code === 127;
     if (!isControl) {
       output += value[index];
     }
@@ -215,11 +231,7 @@ const sanitizeSettingsPayload = (payload: unknown): JsonRecord => {
     sanitized.changeModeShortcut = sanitizeMaybeString(payload.changeModeShortcut, 64, true);
   }
   if (Object.prototype.hasOwnProperty.call(payload, 'transcriptionLanguage')) {
-    sanitized.transcriptionLanguage = sanitizeMaybeString(
-      payload.transcriptionLanguage,
-      24,
-      true
-    );
+    sanitized.transcriptionLanguage = sanitizeMaybeString(payload.transcriptionLanguage, 24, true);
   }
   if (Object.prototype.hasOwnProperty.call(payload, 'openAiApiKey')) {
     const sanitizedApiKey = sanitizeMaybeString(payload.openAiApiKey, 512, true);
@@ -317,7 +329,11 @@ const parseAllowedUrl = (
     if (parsed.protocol === 'https:') return parsed.toString();
     if (options.allowFile && parsed.protocol === 'file:') return parsed.toString();
     if (options.allowHttpLocalhost && parsed.protocol === 'http:') {
-      if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '::1') {
+      if (
+        parsed.hostname === 'localhost' ||
+        parsed.hostname === '127.0.0.1' ||
+        parsed.hostname === '::1'
+      ) {
         return parsed.toString();
       }
     }
@@ -405,7 +421,10 @@ const createWindow = () => {
     event.preventDefault();
   });
 
-  if (process.env.VITE_DEV_SERVER_URL && isAllowedRendererNavigation(process.env.VITE_DEV_SERVER_URL, devServerOrigin)) {
+  if (
+    process.env.VITE_DEV_SERVER_URL &&
+    isAllowedRendererNavigation(process.env.VITE_DEV_SERVER_URL, devServerOrigin)
+  ) {
     win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
     win.loadFile(join(__dirname, '../renderer/index.html'));
@@ -439,11 +458,14 @@ const scheduleUpdateChecks = () => {
     updateTimer = null;
   }
   if (!settings.updateChecks) return;
-  updateTimer = setInterval(() => {
-    autoUpdater.checkForUpdates().catch((error: unknown) => {
-      recordError(error);
-    });
-  }, 1000 * 60 * 60 * 4);
+  updateTimer = setInterval(
+    () => {
+      autoUpdater.checkForUpdates().catch((error: unknown) => {
+        recordError(error);
+      });
+    },
+    1000 * 60 * 60 * 4
+  );
 };
 
 const applyThemeSource = () => {
@@ -530,7 +552,9 @@ const playSoundEffect = (kind: 'start' | 'end') => {
   const soundPath = kind === 'start' ? startSoundPath : endSoundPath;
   if (!soundPath) return;
   const activeProcess = kind === 'start' ? startSoundEffectProcess : endSoundEffectProcess;
-  const isPlaying = Boolean(activeProcess && activeProcess.exitCode === null && !activeProcess.killed);
+  const isPlaying = Boolean(
+    activeProcess && activeProcess.exitCode === null && !activeProcess.killed
+  );
   const nowMs = Date.now();
   if (
     !shouldPlaySoundEffect({
@@ -585,7 +609,7 @@ const playSoundEffect = (kind: 'start' | 'end') => {
 };
 
 const getTrayThemePreference = (): 'light' | 'dark' | 'system' =>
-  process.platform === 'darwin' ? 'system' : settings.theme ?? 'system';
+  process.platform === 'darwin' ? 'system' : (settings.theme ?? 'system');
 
 const resolveTrayIconPath = (theme: 'light' | 'dark' | 'system') => {
   const variant = resolveTrayIconVariant(theme, nativeTheme.shouldUseDarkColors);
@@ -788,6 +812,18 @@ let shortcuts: Array<ReturnType<typeof ShortcutEntrySchema.parse>> = [];
 
 const models = [
   {
+    id: 'gpt-live-transcribe',
+    name: 'GPT Live Transcribe',
+    speed: 'fast',
+    description: 'Recommended low-latency model for live microphone transcription.',
+  },
+  {
+    id: 'gpt-transcribe',
+    name: 'GPT Transcribe',
+    speed: 'accurate',
+    description: 'Recommended model for completed and non-streaming recordings.',
+  },
+  {
     id: 'gpt-4o-mini-transcribe',
     name: 'GPT-4o Mini Transcribe',
     speed: 'fast',
@@ -804,6 +840,12 @@ const models = [
     name: 'GPT-4o Transcribe',
     speed: 'accurate',
     description: 'Higher accuracy for longer dictations.',
+  },
+  {
+    id: 'whisper-1',
+    name: 'Whisper',
+    speed: 'balanced',
+    description: 'Legacy non-streaming transcription model.',
   },
 ].map((model) => ModelInfoSchema.parse(model));
 
@@ -831,9 +873,10 @@ const sendRecordingStatus = (
   }
 };
 
-const pause = (ms: number) => new Promise<void>((resolve) => {
-  setTimeout(resolve, ms);
-});
+const pause = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 const captureRecordingTargetAppName = async () => {
   const timeoutResult = Symbol('active-app-timeout');
@@ -1002,7 +1045,7 @@ const startRecording = async () => {
       modelSelection: mode?.model.selection,
     });
     await speechSession?.start({
-      model: mode?.model ?? { selection: 'fast' },
+      model: mode?.model ?? { selection: 'latest' },
       streamingEnabled,
       silenceRemoval: settings.silenceRemoval,
       language,
@@ -1646,7 +1689,11 @@ const initSpeechSession = () => {
         }
       }
       let result = await platformAdapter.insertText.atCursor(text);
-      if (!result.success && recordingTargetAppName && !isSusurrareAppName(recordingTargetAppName)) {
+      if (
+        !result.success &&
+        recordingTargetAppName &&
+        !isSusurrareAppName(recordingTargetAppName)
+      ) {
         let activeAppName: string | null = null;
         try {
           activeAppName = await platformAdapter.app.activeName();
@@ -2018,7 +2065,10 @@ ipcMain.handle(IpcChannels.updateCheck, async () => {
     return wrapEnvelope({ status: 'checked', info: result?.updateInfo ?? null });
   } catch (error) {
     recordError(error);
-    return wrapEnvelope({ status: 'error', message: error instanceof Error ? error.message : String(error) });
+    return wrapEnvelope({
+      status: 'error',
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
 });
 
@@ -2037,6 +2087,7 @@ ipcMain.handle(IpcChannels.statsSummary, async (_event, envelope) => {
 
 app.whenReady().then(async () => {
   app.setName(APP_BRAND_NAME);
+  ensureLogDirectory();
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
     callback(false);
   });

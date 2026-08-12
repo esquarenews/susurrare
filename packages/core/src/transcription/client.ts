@@ -14,7 +14,9 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const isOpenAIBaseUrl = (baseUrl: string) => baseUrl.includes('api.openai.com');
 const MAX_HTTP_ERROR_DETAIL_LENGTH = 240;
-const RETRYABLE_OPENAI_HTTP_STATUS = new Set([408, 409, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524]);
+const RETRYABLE_OPENAI_HTTP_STATUS = new Set([
+  408, 409, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524,
+]);
 
 class OpenAiHttpError extends Error {
   constructor(
@@ -80,7 +82,10 @@ const buildOpenAiHttpError = async (response: Response) => {
   if (contentType.includes('application/json') && rawBody) {
     try {
       const parsed = JSON.parse(rawBody) as unknown;
-      details = truncateText(compactWhitespace(parseJsonErrorMessage(parsed)), MAX_HTTP_ERROR_DETAIL_LENGTH);
+      details = truncateText(
+        compactWhitespace(parseJsonErrorMessage(parsed)),
+        MAX_HTTP_ERROR_DETAIL_LENGTH
+      );
     } catch {
       details = '';
     }
@@ -187,10 +192,28 @@ const resolveModel = (model: TranscriptionRequest['model']) => {
     }
     return parsed.pinnedModelId;
   }
+  if (parsed.selection === 'latest') return 'gpt-transcribe';
   if (parsed.selection === 'fast') return 'gpt-4o-mini-transcribe';
   if (parsed.selection === 'meeting') return 'gpt-4o-transcribe-diarize';
+  if (parsed.selection === 'legacy') return 'whisper-1';
   return 'gpt-4o-transcribe';
 };
+
+const resolveRealtimeModel = (model: TranscriptionRequest['model']) => {
+  const parsed = ModelSelectionSchema.parse(model);
+  if (parsed.selection === 'latest' || parsed.selection === 'meeting') {
+    return 'gpt-live-transcribe';
+  }
+  if (parsed.selection === 'legacy') {
+    throw new Error(
+      'whisper-1 does not support realtime transcription. Disable streaming to use it.'
+    );
+  }
+  return resolveModel(parsed);
+};
+
+const usesCurrentTranscriptionProtocol = (modelId: string) =>
+  modelId === 'gpt-transcribe' || modelId === 'gpt-live-transcribe';
 
 const normalizeSegments = (value: unknown): DiarizedSegment[] | undefined => {
   if (!Array.isArray(value)) return undefined;
@@ -274,10 +297,7 @@ export const createTranscriptionClient = (
     const sampleRate = request.sampleRate ?? 16000;
     const pcm = request.audio;
     const bytesPerSecond = Math.max(1, sampleRate * 2);
-    const maxPcmBytesPerChunk = Math.max(
-      2,
-      OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES - 44 - 64 * 1024
-    );
+    const maxPcmBytesPerChunk = Math.max(2, OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES - 44 - 64 * 1024);
 
     const submitChunk = async (chunkPcm: Uint8Array) => {
       const wav = encodeWav(chunkPcm, sampleRate);
@@ -288,7 +308,13 @@ export const createTranscriptionClient = (
         form.append('response_format', 'diarized_json');
         form.append('chunking_strategy', 'auto');
       }
-      if (request.language) form.append('language', request.language);
+      if (request.language) {
+        if (modelId === 'gpt-transcribe') {
+          form.append('languages[]', request.language);
+        } else {
+          form.append('language', request.language);
+        }
+      }
       return retryOpenAiRequest(async () => {
         const response = await options.fetcher(url, {
           method: 'POST',
@@ -385,11 +411,13 @@ export const createTranscriptionClient = (
     request: TranscriptionRequest,
     onEvent: (event: TranscriptionEvent) => void
   ) => {
-    const transcriptionModelId = resolveModel(request.model);
+    const transcriptionModelId = isOpenAIBaseUrl(options.baseUrl)
+      ? resolveRealtimeModel(request.model)
+      : resolveModel(request.model);
     if (isOpenAIBaseUrl(options.baseUrl)) {
-    if (!options.apiKey) {
-      throw new Error('OpenAI API key is required for realtime transcription.');
-    }
+      if (!options.apiKey) {
+        throw new Error('OpenAI API key is required for realtime transcription.');
+      }
       const url = resolveOpenAIRealtimeUrl(options.baseUrl);
       const ws = options.websocketFactory(url);
       let closed = false;
@@ -418,26 +446,46 @@ export const createTranscriptionClient = (
       const ready = new Promise<void>((resolve, reject) => {
         ws.onopen = () => {
           try {
-            const sessionUpdate = {
-              type: 'transcription_session.update',
-              session: {
-                input_audio_format: 'pcm16',
-                input_audio_transcription: {
-                  model: transcriptionModelId,
-                  language: request.language,
-                },
-                turn_detection: {
-                  type: 'server_vad',
-                  threshold: 0.2,
-                  prefix_padding_ms: 300,
-                  silence_duration_ms: 500,
-                },
-                input_audio_noise_reduction: {
-                  type: 'near_field',
-                },
-                include: [],
-              },
-            };
+            const sessionUpdate = usesCurrentTranscriptionProtocol(transcriptionModelId)
+              ? {
+                  type: 'session.update',
+                  session: {
+                    type: 'transcription',
+                    audio: {
+                      input: {
+                        format: { type: 'audio/pcm', rate: sampleRate },
+                        transcription: {
+                          model: transcriptionModelId,
+                          ...(request.language ? { languages: [request.language] } : {}),
+                          ...(transcriptionModelId === 'gpt-live-transcribe'
+                            ? { delay: 'low' }
+                            : {}),
+                        },
+                        turn_detection: null,
+                      },
+                    },
+                  },
+                }
+              : {
+                  type: 'transcription_session.update',
+                  session: {
+                    input_audio_format: 'pcm16',
+                    input_audio_transcription: {
+                      model: transcriptionModelId,
+                      language: request.language,
+                    },
+                    turn_detection: {
+                      type: 'server_vad',
+                      threshold: 0.2,
+                      prefix_padding_ms: 300,
+                      silence_duration_ms: 500,
+                    },
+                    input_audio_noise_reduction: {
+                      type: 'near_field',
+                    },
+                    include: [],
+                  },
+                };
             ws.send(JSON.stringify(sessionUpdate));
             debugLog('open', {
               transcriptionModel: transcriptionModelId,
@@ -479,7 +527,7 @@ export const createTranscriptionClient = (
                   ? new TextDecoder().decode(data)
                   : data instanceof ArrayBuffer
                     ? new TextDecoder().decode(new Uint8Array(data))
-                  : String(data ?? '');
+                    : String(data ?? '');
           const parsed = JSON.parse(text) as { type?: string; [key: string]: unknown };
           const type = parsed.type ?? '';
           if (type) {
@@ -489,9 +537,7 @@ export const createTranscriptionClient = (
           }
           if (type === 'conversation.item.input_audio_transcription.delta') {
             const delta =
-              (parsed.delta as string | undefined) ??
-              (parsed.text as string | undefined) ??
-              '';
+              (parsed.delta as string | undefined) ?? (parsed.text as string | undefined) ?? '';
             if (delta) {
               partialText = `${partialText}${delta}`;
               sawTranscript = true;
@@ -554,7 +600,7 @@ export const createTranscriptionClient = (
         finalize: async () => {
           if (closed) return;
           try {
-            const minBytes = Math.round((sampleRate * 0.1) * 2);
+            const minBytes = Math.round(sampleRate * 0.1 * 2);
             if (bytesSent >= minBytes) {
               ws.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
             } else {

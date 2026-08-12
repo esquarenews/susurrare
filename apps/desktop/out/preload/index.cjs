@@ -3665,15 +3665,15 @@ objectType({
   version: literalType(IPC_VERSION),
   payload: unknownType()
 });
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const ModeSchema = objectType({
   id: stringType(),
   name: stringType(),
   description: stringType().optional(),
   model: objectType({
-    selection: enumType(["fast", "accurate", "meeting", "pinned"]),
+    selection: enumType(["latest", "fast", "accurate", "meeting", "legacy", "pinned"]),
     pinnedModelId: stringType().optional()
-  }).default({ selection: "fast" }),
+  }).default({ selection: "latest" }),
   streamingEnabled: booleanType().default(true),
   punctuationNormalization: booleanType().optional(),
   punctuationCommandsEnabled: booleanType().default(false),
@@ -3773,7 +3773,7 @@ objectType({
   payload: unknownType()
 });
 const ModelSelectionSchema = objectType({
-  selection: enumType(["fast", "accurate", "meeting", "pinned"]),
+  selection: enumType(["latest", "fast", "accurate", "meeting", "legacy", "pinned"]),
   pinnedModelId: stringType().optional()
 });
 const TranscriptionEventSchema = objectType({

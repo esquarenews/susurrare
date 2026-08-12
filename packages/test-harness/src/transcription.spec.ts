@@ -49,6 +49,56 @@ const createMockSocket = (): MockSocket => {
 };
 
 describe('transcription client', () => {
+  it('uses the recommended current model and language field for file transcription', async () => {
+    let capturedBody: FormData | null = null;
+    const client = createTranscriptionClient({
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      fetcher: vi.fn(async (_url, init) => {
+        capturedBody = init?.body as FormData;
+        return new Response(JSON.stringify({ text: 'latest result' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }),
+      websocketFactory: () => createMockSocket(),
+    });
+
+    await client.transcribe({
+      audio: new Uint8Array([1, 2]),
+      model: { selection: 'latest' },
+      language: 'en',
+    });
+
+    const getField = (key: string) =>
+      (capturedBody as unknown as { get: (name: string) => unknown }).get(key);
+    expect(getField('model')).toBe('gpt-transcribe');
+    expect(getField('languages[]')).toBe('en');
+    expect(getField('language')).toBeNull();
+  });
+
+  it('keeps whisper-1 available for legacy non-streaming transcription', async () => {
+    let capturedBody: FormData | null = null;
+    const client = createTranscriptionClient({
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      fetcher: vi.fn(async (_url, init) => {
+        capturedBody = init?.body as FormData;
+        return new Response(JSON.stringify({ text: 'legacy result' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }),
+      websocketFactory: () => createMockSocket(),
+    });
+
+    await client.transcribe({ audio: new Uint8Array([1]), model: { selection: 'legacy' } });
+
+    expect((capturedBody as unknown as { get: (name: string) => unknown }).get('model')).toBe(
+      'whisper-1'
+    );
+  });
+
   it('resolves model selection', async () => {
     const client = createTranscriptionClient({
       baseUrl: 'https://example.com',
@@ -136,11 +186,12 @@ describe('transcription client', () => {
   });
 
   it('accepts transcript as an alternative OpenAI HTTP payload field', async () => {
-    const fetcher = vi.fn(async () =>
-      new Response(JSON.stringify({ transcript: 'alternate field text' }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
+    const fetcher = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ transcript: 'alternate field text' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
     );
 
     const client = createTranscriptionClient({
@@ -201,11 +252,12 @@ describe('transcription client', () => {
   });
 
   it('sanitizes HTML OpenAI error payloads when retries are exhausted', async () => {
-    const fetcher = vi.fn(async () =>
-      new Response('<!DOCTYPE html><html><body>Cloudflare Ray ID: 12345</body></html>', {
-        status: 520,
-        headers: { 'content-type': 'text/html' },
-      })
+    const fetcher = vi.fn(
+      async () =>
+        new Response('<!DOCTYPE html><html><body>Cloudflare Ray ID: 12345</body></html>', {
+          status: 520,
+          headers: { 'content-type': 'text/html' },
+        })
     );
 
     const client = createTranscriptionClient(
@@ -282,7 +334,10 @@ describe('transcription client', () => {
 
   it.each([
     ['https://api.openai.com/v1', 'https://api.openai.com/v1/audio/transcriptions'],
-    ['https://api.openai.com/proxy/v1/tenant', 'https://api.openai.com/proxy/v1/tenant/audio/transcriptions'],
+    [
+      'https://api.openai.com/proxy/v1/tenant',
+      'https://api.openai.com/proxy/v1/tenant/audio/transcriptions',
+    ],
     ['https://api.openai.com', 'https://api.openai.com/v1/audio/transcriptions'],
   ])('resolves OpenAI transcription URL from %s', async (baseUrl, expectedUrl) => {
     let calledUrl = '';
@@ -364,7 +419,9 @@ describe('transcription client', () => {
     const client = createTranscriptionClient({
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'test-key',
-      fetcher: vi.fn(async () => new Response(JSON.stringify({ text: 'fallback' }), { status: 200 })),
+      fetcher: vi.fn(
+        async () => new Response(JSON.stringify({ text: 'fallback' }), { status: 200 })
+      ),
       websocketFactory,
     });
 
@@ -383,10 +440,15 @@ describe('transcription client', () => {
     socket.emitOpen();
     const handle = await handlePromise;
 
-    expect(websocketFactory).toHaveBeenCalledWith('wss://api.openai.com/v1/realtime?intent=transcription');
+    expect(websocketFactory).toHaveBeenCalledWith(
+      'wss://api.openai.com/v1/realtime?intent=transcription'
+    );
     expect(socket.sent.length).toBeGreaterThan(0);
 
-    const sessionUpdate = JSON.parse(String(socket.sent[0])) as { type: string; session: { input_audio_transcription: { model: string; language?: string } } };
+    const sessionUpdate = JSON.parse(String(socket.sent[0])) as {
+      type: string;
+      session: { input_audio_transcription: { model: string; language?: string } };
+    };
     expect(sessionUpdate.type).toBe('transcription_session.update');
     expect(sessionUpdate.session.input_audio_transcription.model).toBe('gpt-4o-mini-transcribe');
     expect(sessionUpdate.session.input_audio_transcription.language).toBe('en');
@@ -425,6 +487,53 @@ describe('transcription client', () => {
     expect(socket.closed).toBe(true);
   });
 
+  it('uses the current realtime session protocol for the latest model', async () => {
+    const socket = createMockSocket();
+    const client = createTranscriptionClient({
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'test-key',
+      fetcher: vi.fn(),
+      websocketFactory: () => socket,
+    });
+
+    const handlePromise = client.openStream!(
+      {
+        audio: new Uint8Array(),
+        model: { selection: 'latest' },
+        language: 'en',
+        sampleRate: 24000,
+      },
+      () => undefined
+    );
+    socket.emitOpen();
+    const handle = await handlePromise;
+
+    const update = JSON.parse(String(socket.sent[0])) as {
+      type: string;
+      session: {
+        type: string;
+        audio: {
+          input: {
+            format: { type: string; rate: number };
+            transcription: { model: string; languages: string[]; delay: string };
+            turn_detection: null;
+          };
+        };
+      };
+    };
+    expect(update.type).toBe('session.update');
+    expect(update.session.type).toBe('transcription');
+    expect(update.session.audio.input.format).toEqual({ type: 'audio/pcm', rate: 24000 });
+    expect(update.session.audio.input.transcription).toEqual({
+      model: 'gpt-live-transcribe',
+      languages: ['en'],
+      delay: 'low',
+    });
+    expect(update.session.audio.input.turn_detection).toBeNull();
+
+    handle.cancel();
+  });
+
   it('requires OpenAI API key for realtime stream setup', async () => {
     const client = createTranscriptionClient({
       baseUrl: 'https://api.openai.com/v1',
@@ -460,11 +569,12 @@ describe('transcription client', () => {
     };
 
     const websocketFactory = vi.fn(() => socket);
-    const fetcher = vi.fn(async () =>
-      new Response(JSON.stringify({ text: 'fallback transcript' }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
+    const fetcher = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ text: 'fallback transcript' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
     );
 
     const client = createTranscriptionClient({
@@ -496,7 +606,9 @@ describe('transcription client', () => {
 
     const client = createTranscriptionClient({
       baseUrl: 'https://example.com',
-      fetcher: vi.fn(async () => new Response(JSON.stringify({ text: 'ignored' }), { status: 200 })),
+      fetcher: vi.fn(
+        async () => new Response(JSON.stringify({ text: 'ignored' }), { status: 200 })
+      ),
       websocketFactory: vi.fn(() => socket),
     });
 
@@ -517,7 +629,9 @@ describe('transcription client', () => {
     socket.emitMessage(JSON.stringify({ kind: 'final', text: 'done', timestamp: Date.now() }));
     await handle.finalize();
 
-    const sentBinary = socket.sent.filter((payload) => payload instanceof Uint8Array) as Uint8Array[];
+    const sentBinary = socket.sent.filter(
+      (payload) => payload instanceof Uint8Array
+    ) as Uint8Array[];
     expect(sentBinary.some((chunk) => chunk.length === 3)).toBe(true);
     expect(sentBinary.some((chunk) => chunk.length === 0)).toBe(true);
     expect(events).toEqual(['partial:part', 'final:done']);
@@ -547,7 +661,10 @@ describe('transcription client', () => {
     ) as ReturnType<typeof createTranscriptionClient> & {
       transcribeWithFallback: (request: {
         audio: Uint8Array;
-        model: { selection: 'fast' | 'accurate' | 'meeting' | 'pinned'; pinnedModelId?: string };
+        model: {
+          selection: 'latest' | 'fast' | 'accurate' | 'meeting' | 'legacy' | 'pinned';
+          pinnedModelId?: string;
+        };
       }) => Promise<Array<{ text: string }>>;
     };
 
@@ -570,7 +687,10 @@ describe('transcription client', () => {
       },
       { maxAttempts: 2, baseDelayMs: 1 }
     ) as ReturnType<typeof createTranscriptionClient> & {
-      transcribeWithFallback: (request: { audio: Uint8Array; model: { selection: 'fast' } }) => Promise<Array<{ text: string }>>;
+      transcribeWithFallback: (request: {
+        audio: Uint8Array;
+        model: { selection: 'fast' };
+      }) => Promise<Array<{ text: string }>>;
     };
 
     await expect(

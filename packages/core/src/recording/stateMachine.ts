@@ -49,7 +49,7 @@ export const createRecordingStateMachine = (
 ): RecordingController => {
   let state: RecordingState = 'idle';
   let streamedFinalText: string | null = null;
-  let currentModel: ModelSelection = { selection: 'fast' };
+  let currentModel: ModelSelection = { selection: 'latest' };
 
   const safeSetState = (next: RecordingState) => {
     state = next;
@@ -71,16 +71,13 @@ export const createRecordingStateMachine = (
           audio: new Uint8Array(),
           model,
         };
-        await deps.transcription.stream(
-          request,
-          (event: TranscriptionEvent) => {
-            if (event.kind === 'partial') hooks.onPartialText?.(event.text);
-            if (event.kind === 'final') {
-              streamedFinalText = event.text;
-              hooks.onFinalText?.(event.text);
-            }
+        await deps.transcription.stream(request, (event: TranscriptionEvent) => {
+          if (event.kind === 'partial') hooks.onPartialText?.(event.text);
+          if (event.kind === 'final') {
+            streamedFinalText = event.text;
+            hooks.onFinalText?.(event.text);
           }
-        );
+        });
       } catch (error) {
         hooks.onError?.(error);
       }

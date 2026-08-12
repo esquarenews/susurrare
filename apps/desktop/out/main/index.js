@@ -20542,15 +20542,15 @@ const createCoalescedAsyncRunner = (task) => {
     await inFlight;
   };
 };
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const ModeSchema = objectType({
   id: stringType(),
   name: stringType(),
   description: stringType().optional(),
   model: objectType({
-    selection: enumType(["fast", "accurate", "meeting", "pinned"]),
+    selection: enumType(["latest", "fast", "accurate", "meeting", "legacy", "pinned"]),
     pinnedModelId: stringType().optional()
-  }).default({ selection: "fast" }),
+  }).default({ selection: "latest" }),
   streamingEnabled: booleanType().default(true),
   punctuationNormalization: booleanType().optional(),
   punctuationCommandsEnabled: booleanType().default(false),
@@ -21012,7 +21012,7 @@ const DEFAULT_PIPELINE = [
   keywordCommandStage
 ];
 const ModelSelectionSchema = objectType({
-  selection: enumType(["fast", "accurate", "meeting", "pinned"]),
+  selection: enumType(["latest", "fast", "accurate", "meeting", "legacy", "pinned"]),
   pinnedModelId: stringType().optional()
 });
 const TranscriptionEventSchema = objectType({
@@ -21047,6 +21047,9 @@ const resolveRecordingStreamingEnabled = (configuredStreamingEnabled, modelSelec
   if (modelSelection === "meeting") {
     return true;
   }
+  if (modelSelection === "legacy") {
+    return false;
+  }
   return configuredStreamingEnabled ?? true;
 };
 const resolveRecordingSilenceTimeoutMs = (configuredTimeoutMs, options) => {
@@ -21064,7 +21067,21 @@ const resolveRecordingSilenceTimeoutMs = (configuredTimeoutMs, options) => {
 const delay = (ms2) => new Promise((resolve2) => setTimeout(resolve2, ms2));
 const isOpenAIBaseUrl = (baseUrl) => baseUrl.includes("api.openai.com");
 const MAX_HTTP_ERROR_DETAIL_LENGTH = 240;
-const RETRYABLE_OPENAI_HTTP_STATUS = /* @__PURE__ */ new Set([408, 409, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524]);
+const RETRYABLE_OPENAI_HTTP_STATUS = /* @__PURE__ */ new Set([
+  408,
+  409,
+  425,
+  429,
+  500,
+  502,
+  503,
+  504,
+  520,
+  521,
+  522,
+  523,
+  524
+]);
 class OpenAiHttpError extends Error {
   constructor(status, message, retryable2) {
     super(message);
@@ -21118,7 +21135,10 @@ const buildOpenAiHttpError = async (response) => {
   if (contentType.includes("application/json") && rawBody) {
     try {
       const parsed = JSON.parse(rawBody);
-      details = truncateText(compactWhitespace(parseJsonErrorMessage(parsed)), MAX_HTTP_ERROR_DETAIL_LENGTH);
+      details = truncateText(
+        compactWhitespace(parseJsonErrorMessage(parsed)),
+        MAX_HTTP_ERROR_DETAIL_LENGTH
+      );
     } catch {
       details = "";
     }
@@ -21215,10 +21235,25 @@ const resolveModel = (model) => {
     }
     return parsed.pinnedModelId;
   }
+  if (parsed.selection === "latest") return "gpt-transcribe";
   if (parsed.selection === "fast") return "gpt-4o-mini-transcribe";
   if (parsed.selection === "meeting") return "gpt-4o-transcribe-diarize";
+  if (parsed.selection === "legacy") return "whisper-1";
   return "gpt-4o-transcribe";
 };
+const resolveRealtimeModel = (model) => {
+  const parsed = ModelSelectionSchema.parse(model);
+  if (parsed.selection === "latest" || parsed.selection === "meeting") {
+    return "gpt-live-transcribe";
+  }
+  if (parsed.selection === "legacy") {
+    throw new Error(
+      "whisper-1 does not support realtime transcription. Disable streaming to use it."
+    );
+  }
+  return resolveModel(parsed);
+};
+const usesCurrentTranscriptionProtocol = (modelId) => modelId === "gpt-transcribe" || modelId === "gpt-live-transcribe";
 const normalizeSegments = (value) => {
   if (!Array.isArray(value)) return void 0;
   const segments = [];
@@ -21283,10 +21318,7 @@ const createTranscriptionClient = (options, retryPolicy = RetryPolicySchema.pars
     const sampleRate = request.sampleRate ?? 16e3;
     const pcm = request.audio;
     const bytesPerSecond = Math.max(1, sampleRate * 2);
-    const maxPcmBytesPerChunk = Math.max(
-      2,
-      OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES - 44 - 64 * 1024
-    );
+    const maxPcmBytesPerChunk = Math.max(2, OPENAI_TRANSCRIPTION_MAX_UPLOAD_BYTES - 44 - 64 * 1024);
     const submitChunk = async (chunkPcm) => {
       const wav = encodeWav(chunkPcm, sampleRate);
       const form = new FormData();
@@ -21296,7 +21328,13 @@ const createTranscriptionClient = (options, retryPolicy = RetryPolicySchema.pars
         form.append("response_format", "diarized_json");
         form.append("chunking_strategy", "auto");
       }
-      if (request.language) form.append("language", request.language);
+      if (request.language) {
+        if (modelId === "gpt-transcribe") {
+          form.append("languages[]", request.language);
+        } else {
+          form.append("language", request.language);
+        }
+      }
       return retryOpenAiRequest(async () => {
         const response = await options.fetcher(url, {
           method: "POST",
@@ -21383,7 +21421,7 @@ const createTranscriptionClient = (options, retryPolicy = RetryPolicySchema.pars
     ];
   };
   const openStream = async (request, onEvent) => {
-    const transcriptionModelId = resolveModel(request.model);
+    const transcriptionModelId = isOpenAIBaseUrl(options.baseUrl) ? resolveRealtimeModel(request.model) : resolveModel(request.model);
     if (isOpenAIBaseUrl(options.baseUrl)) {
       if (!options.apiKey) {
         throw new Error("OpenAI API key is required for realtime transcription.");
@@ -21410,7 +21448,23 @@ const createTranscriptionClient = (options, retryPolicy = RetryPolicySchema.pars
       const ready2 = new Promise((resolve2, reject2) => {
         ws2.onopen = () => {
           try {
-            const sessionUpdate = {
+            const sessionUpdate = usesCurrentTranscriptionProtocol(transcriptionModelId) ? {
+              type: "session.update",
+              session: {
+                type: "transcription",
+                audio: {
+                  input: {
+                    format: { type: "audio/pcm", rate: sampleRate },
+                    transcription: {
+                      model: transcriptionModelId,
+                      ...request.language ? { languages: [request.language] } : {},
+                      ...transcriptionModelId === "gpt-live-transcribe" ? { delay: "low" } : {}
+                    },
+                    turn_detection: null
+                  }
+                }
+              }
+            } : {
               type: "transcription_session.update",
               session: {
                 input_audio_format: "pcm16",
@@ -21800,8 +21854,10 @@ const resolveModelId = (model) => {
     }
     return model.pinnedModelId;
   }
+  if (model.selection === "latest") return "gpt-transcribe";
   if (model.selection === "fast") return "gpt-4o-mini-transcribe";
   if (model.selection === "meeting") return "gpt-4o-transcribe-diarize";
+  if (model.selection === "legacy") return "whisper-1";
   return "gpt-4o-transcribe";
 };
 const applyPipeline = (input, context, stages) => {
@@ -21863,7 +21919,7 @@ const createSpeechToTextSession = (deps) => {
     sampleRate: config.sampleRate
   } : {
     audio,
-    model: { selection: "fast" }
+    model: { selection: "latest" }
   };
   const createStreamingSegment = (startedAudioDurationMs) => ({
     handle: null,
@@ -22174,7 +22230,9 @@ const createSpeechToTextSession = (deps) => {
     }
     if (!finalText?.trim() && !diarizedSegments?.length && audioDurationMs >= EMPTY_TRANSCRIPT_MIN_AUDIO_MS) {
       await finalizeWithError(
-        new Error("No transcript was returned for the recorded audio. Check microphone input and try again."),
+        new Error(
+          "No transcript was returned for the recorded audio. Check microphone input and try again."
+        ),
         "no_transcript"
       );
       reset();
@@ -23549,6 +23607,7 @@ const platformAdapter = process.platform === "darwin" ? macosAdapter : windowsAd
 const defaultMode = () => ModeSchema.parse({
   id: "default",
   name: "Default",
+  model: { selection: "latest" },
   punctuationCommandsEnabled: true,
   createdAt: Date.now(),
   updatedAt: Date.now()
@@ -23580,11 +23639,12 @@ const loadState = () => {
       (entry) => ShortcutEntrySchema.parse(entry)
     );
     let modes2 = (Array.isArray(payload.modes) ? payload.modes : []).map((mode) => {
-      const needsPunctuation = mode?.id === "default" && typeof mode.punctuationCommandsEnabled === "undefined";
+      const migratedMode = (raw.version ?? 1) < 2 && mode?.id === "default" && mode?.model?.selection === "fast" ? { ...mode, model: { selection: "latest" } } : mode;
+      const needsPunctuation = migratedMode?.id === "default" && typeof migratedMode.punctuationCommandsEnabled === "undefined";
       if (needsPunctuation) {
-        return ModeSchema.parse({ ...mode, punctuationCommandsEnabled: true });
+        return ModeSchema.parse({ ...migratedMode, punctuationCommandsEnabled: true });
       }
-      return ModeSchema.parse(mode);
+      return ModeSchema.parse(migratedMode);
     });
     if (!modes2.find((mode) => mode.id === "default")) {
       modes2 = [defaultMode(), ...modes2];
@@ -38013,6 +38073,16 @@ const lastSoundEffectAt = {
   start: 0,
   end: 0
 };
+const ensureLogDirectory = () => {
+  try {
+    const logsPath = app.getPath("logs");
+    if (logsPath) {
+      mkdirSync(logsPath, { recursive: true });
+    }
+  } catch (error2) {
+    console.error("Failed to create application log directory", error2);
+  }
+};
 const logHotkeyDebug = (message, details) => {
   if (app.isPackaged) return;
   log$1.transports.file({
@@ -38089,11 +38159,7 @@ const sanitizeSettingsPayload = (payload) => {
     sanitized.changeModeShortcut = sanitizeMaybeString(payload.changeModeShortcut, 64, true);
   }
   if (Object.prototype.hasOwnProperty.call(payload, "transcriptionLanguage")) {
-    sanitized.transcriptionLanguage = sanitizeMaybeString(
-      payload.transcriptionLanguage,
-      24,
-      true
-    );
+    sanitized.transcriptionLanguage = sanitizeMaybeString(payload.transcriptionLanguage, 24, true);
   }
   if (Object.prototype.hasOwnProperty.call(payload, "openAiApiKey")) {
     const sanitizedApiKey = sanitizeMaybeString(payload.openAiApiKey, 512, true);
@@ -38280,11 +38346,14 @@ const scheduleUpdateChecks = () => {
     updateTimer = null;
   }
   if (!settings.updateChecks) return;
-  updateTimer = setInterval(() => {
-    main$2.autoUpdater.checkForUpdates().catch((error2) => {
-      recordError(error2);
-    });
-  }, 1e3 * 60 * 60 * 4);
+  updateTimer = setInterval(
+    () => {
+      main$2.autoUpdater.checkForUpdates().catch((error2) => {
+        recordError(error2);
+      });
+    },
+    1e3 * 60 * 60 * 4
+  );
 };
 const applyThemeSource = () => {
   nativeTheme.themeSource = settings.theme ?? "system";
@@ -38362,7 +38431,9 @@ const playSoundEffect = (kind) => {
   const soundPath = kind === "start" ? startSoundPath : endSoundPath;
   if (!soundPath) return;
   const activeProcess = kind === "start" ? startSoundEffectProcess : endSoundEffectProcess;
-  const isPlaying = Boolean(activeProcess && activeProcess.exitCode === null && !activeProcess.killed);
+  const isPlaying = Boolean(
+    activeProcess && activeProcess.exitCode === null && !activeProcess.killed
+  );
   const nowMs = Date.now();
   if (!shouldPlaySoundEffect({
     nowMs,
@@ -38600,6 +38671,18 @@ let vocabulary = [];
 let shortcuts = [];
 const models = [
   {
+    id: "gpt-live-transcribe",
+    name: "GPT Live Transcribe",
+    speed: "fast",
+    description: "Recommended low-latency model for live microphone transcription."
+  },
+  {
+    id: "gpt-transcribe",
+    name: "GPT Transcribe",
+    speed: "accurate",
+    description: "Recommended model for completed and non-streaming recordings."
+  },
+  {
     id: "gpt-4o-mini-transcribe",
     name: "GPT-4o Mini Transcribe",
     speed: "fast",
@@ -38616,6 +38699,12 @@ const models = [
     name: "GPT-4o Transcribe",
     speed: "accurate",
     description: "Higher accuracy for longer dictations."
+  },
+  {
+    id: "whisper-1",
+    name: "Whisper",
+    speed: "balanced",
+    description: "Legacy non-streaming transcription model."
   }
 ].map((model) => ModelInfoSchema.parse(model));
 const wrapEnvelope = (payload) => ({
@@ -38794,7 +38883,7 @@ const startRecording = async () => {
       modelSelection: mode?.model.selection
     });
     await speechSession?.start({
-      model: mode?.model ?? { selection: "fast" },
+      model: mode?.model ?? { selection: "latest" },
       streamingEnabled,
       silenceRemoval: settings.silenceRemoval,
       language,
@@ -39740,7 +39829,10 @@ ipcMain.handle(IpcChannels.updateCheck, async () => {
     return wrapEnvelope({ status: "checked", info: result?.updateInfo ?? null });
   } catch (error2) {
     recordError(error2);
-    return wrapEnvelope({ status: "error", message: error2 instanceof Error ? error2.message : String(error2) });
+    return wrapEnvelope({
+      status: "error",
+      message: error2 instanceof Error ? error2.message : String(error2)
+    });
   }
 });
 ipcMain.handle(IpcChannels.statsSummary, async (_event, envelope) => {
@@ -39757,6 +39849,7 @@ ipcMain.handle(IpcChannels.statsSummary, async (_event, envelope) => {
 });
 app.whenReady().then(async () => {
   app.setName(APP_BRAND_NAME);
+  ensureLogDirectory();
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
     callback(false);
   });

@@ -27,6 +27,7 @@ const defaultMode = (): Mode =>
   ModeSchema.parse({
     id: 'default',
     name: 'Default',
+    model: { selection: 'latest' },
     punctuationCommandsEnabled: true,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -64,13 +65,18 @@ export const loadState = (): PersistedState => {
       ShortcutEntrySchema.parse(entry)
     );
     let modes = (Array.isArray(payload.modes) ? payload.modes : []).map((mode) => {
+      const migratedMode =
+        (raw.version ?? 1) < 2 && mode?.id === 'default' && mode?.model?.selection === 'fast'
+          ? { ...mode, model: { selection: 'latest' } }
+          : mode;
       const needsPunctuation =
-        mode?.id === 'default' && typeof (mode as { punctuationCommandsEnabled?: boolean })
+        migratedMode?.id === 'default' &&
+        typeof (migratedMode as { punctuationCommandsEnabled?: boolean })
           .punctuationCommandsEnabled === 'undefined';
       if (needsPunctuation) {
-        return ModeSchema.parse({ ...mode, punctuationCommandsEnabled: true });
+        return ModeSchema.parse({ ...migratedMode, punctuationCommandsEnabled: true });
       }
-      return ModeSchema.parse(mode);
+      return ModeSchema.parse(migratedMode);
     });
     if (!modes.find((mode) => mode.id === 'default')) {
       modes = [defaultMode(), ...modes];

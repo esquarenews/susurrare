@@ -175,7 +175,8 @@ const validateShortcut = (value: string) => {
     if (!normalized || normalized.kind !== 'modifier') {
       return {
         valid: false as const,
-        error: 'Invalid syntax. Put modifiers first and finish with a key, for example Ctrl+Option+Space.',
+        error:
+          'Invalid syntax. Put modifiers first and finish with a key, for example Ctrl+Option+Space.',
       };
     }
     if (modifiers.includes(normalized.value)) {
@@ -190,7 +191,8 @@ const validateShortcut = (value: string) => {
   if (!main || main.kind !== 'key') {
     return {
       valid: false as const,
-      error: 'Invalid syntax. The shortcut needs a final non-modifier key, for example Shift+Cmd+K.',
+      error:
+        'Invalid syntax. The shortcut needs a final non-modifier key, for example Shift+Cmd+K.',
     };
   }
   return {
@@ -326,16 +328,14 @@ const buildPermissionNotices = (permissions: PermissionStatus | null): Permissio
     notices.push({
       id: 'accessibility',
       title: 'Global hold-to-talk is unavailable',
-      body:
-        'Grant Accessibility and Input Monitoring access to Vocsen to enable low-level push-to-talk detection. In development builds, the entry may appear as Vocsen or Electron. If text is copied but not pasted, also allow Vocsen or Electron to control System Events under Automation.',
+      body: 'Grant Accessibility and Input Monitoring access to Vocsen to enable low-level push-to-talk detection. In development builds, the entry may appear as Vocsen or Electron. If text is copied but not pasted, also allow Vocsen or Electron to control System Events under Automation.',
     });
   }
   if (permissions.microphone !== 'granted') {
     notices.push({
       id: 'microphone',
       title: 'Microphone capture is unavailable',
-      body:
-        'Grant microphone access so Vocsen can record audio for transcription.',
+      body: 'Grant microphone access so Vocsen can record audio for transcription.',
     });
   }
   return notices;
@@ -414,10 +414,7 @@ const SettingsConfigView: React.FC<{ targetSection?: SettingsTargetSection | nul
     keyboardShortcutsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [targetSection]);
 
-  const permissionNotices = useMemo(
-    () => buildPermissionNotices(permissions),
-    [permissions]
-  );
+  const permissionNotices = useMemo(() => buildPermissionNotices(permissions), [permissions]);
 
   if (!settings) {
     return (
@@ -657,8 +654,8 @@ const SettingsConfigView: React.FC<{ targetSection?: SettingsTargetSection | nul
           </div>
         ))}
         <p className="shortcut-help">
-          Focus a field and press the shortcut you want, or click Capture to do the same.
-          Example: <code>Ctrl+Option+Space</code>.
+          Focus a field and press the shortcut you want, or click Capture to do the same. Example:{' '}
+          <code>Ctrl+Option+Space</code>.
         </p>
       </div>
       <div className="card">
@@ -854,7 +851,7 @@ const ModelsLibraryView: React.FC = () => {
             sectionId="help-models"
             ariaLabel="Open Models Library help section"
           />
-          <p>Pick models tuned for speed, accuracy, or meeting diarization.</p>
+          <p>Review the recommended live and file models, plus legacy and meeting options.</p>
         </div>
         <button className="primary" onClick={() => window.location.reload()}>
           Refresh models
@@ -867,14 +864,16 @@ const ModelsLibraryView: React.FC = () => {
               {model.id.includes('diarize')
                 ? 'Meetings'
                 : model.speed === 'fast'
-                ? 'Fast'
-                : model.speed === 'accurate'
-                ? 'Accurate'
-                : 'Balanced'}
+                  ? 'Fast'
+                  : model.speed === 'accurate'
+                    ? 'Accurate'
+                    : 'Balanced'}
             </div>
             <h3>{model.name}</h3>
             <p>{model.id}</p>
-            {model.speed === 'fast' && <span className="tag">Recommended default</span>}
+            {(model.id === 'gpt-live-transcribe' || model.id === 'gpt-transcribe') && (
+              <span className="tag">Recommended</span>
+            )}
             {model.id.includes('diarize') && (
               <span className="tag">Best for multi-speaker notes</span>
             )}
@@ -886,7 +885,7 @@ const ModelsLibraryView: React.FC = () => {
         <p className="muted">Use a custom model id for advanced setups.</p>
         <input
           className={`search ${warning ? 'input-warning' : ''}`}
-          placeholder="gpt-4o-mini-transcribe"
+          placeholder="gpt-transcribe"
           value={pinned}
           onChange={(event) => setPinned(event.target.value)}
         />
@@ -958,8 +957,10 @@ const summarizeRange = (items: HistoryItem[], rangeStart: number, rangeEnd: numb
     }))
     .filter((sample) => sample.words > 0 && sample.durationMs > 0);
   const averageSpeed = speedSamples.length
-    ? speedSamples.reduce((total, sample) => total + sample.words / (sample.durationMs / 60000), 0) /
-      speedSamples.length
+    ? speedSamples.reduce(
+        (total, sample) => total + sample.words / (sample.durationMs / 60000),
+        0
+      ) / speedSamples.length
     : 0;
   const totalDurationMs = rangeItems.reduce((total, item, index) => {
     if (item.audioDurationMs) return total + item.audioDurationMs;
@@ -1092,10 +1093,7 @@ const LineChart: React.FC<{
         ))}
       </svg>
       {hover && (
-        <div
-          className="stats-tooltip"
-          style={{ left: `${hover.x}px`, top: `${hover.y}px` }}
-        >
+        <div className="stats-tooltip" style={{ left: `${hover.x}px`, top: `${hover.y}px` }}>
           <span>{hover.label}</span>
           <strong>{hover.value}</strong>
         </div>
@@ -1109,7 +1107,7 @@ const buildPerformanceSummary = (series: StatsSeries[]) => {
   const summarize = (points: StatsPoint[]) => {
     if (!points.length) return { last: 0, previous: 0, delta: 0 };
     const last = points[points.length - 1]?.value ?? 0;
-    const previous = points.length > 1 ? points[points.length - 2]?.value ?? 0 : last;
+    const previous = points.length > 1 ? (points[points.length - 2]?.value ?? 0) : last;
     return { last, previous, delta: last - previous };
   };
 
@@ -1122,9 +1120,7 @@ const buildPerformanceSummary = (series: StatsSeries[]) => {
     return 'No activity yet. Record a few dictations to unlock your weekly insights.';
   }
 
-  const speedText = speed.last
-    ? `${Math.round(speed.last)} WPM`
-    : 'a steady pace';
+  const speedText = speed.last ? `${Math.round(speed.last)} WPM` : 'a steady pace';
   const savedText = saved.last ? `${Math.round(saved.last)} minutes` : 'some time';
   const wordTrend = words.delta >= 0 ? 'up' : 'down';
   const appTrend = apps.last > 1 ? `across ${Math.round(apps.last)} apps` : 'in one app';
@@ -1133,8 +1129,8 @@ const buildPerformanceSummary = (series: StatsSeries[]) => {
     words.delta < 0
       ? 'Try one extra short dictation to keep momentum.'
       : saved.delta < 0
-      ? 'A slightly longer session could boost your time savings.'
-      : 'Keep it up and challenge yourself to beat this week’s word count.';
+        ? 'A slightly longer session could boost your time savings.'
+        : 'Keep it up and challenge yourself to beat this week’s word count.';
 
   return `Nice work — you averaged ${speedText} and saved ${savedText} ${appTrend}. Your word count is ${wordTrend} versus the prior period. ${nudge}`;
 };
@@ -1264,13 +1260,17 @@ export const HomeView: React.FC<{
     summaryState.source === 'openai'
       ? 'AI coach'
       : summaryState.source === 'loading'
-      ? 'Generating'
-      : 'Info';
+        ? 'Generating'
+        : 'Info';
   return (
     <div className="view">
       <div className="view-header">
         <div>
-          <ViewTitle title="Home" sectionId="help-home-section" ariaLabel="Open Home help section" />
+          <ViewTitle
+            title="Home"
+            sectionId="help-home-section"
+            ariaLabel="Open Home help section"
+          />
           <p>Your dictation activity snapshot and quick-start actions.</p>
         </div>
         <div className="view-header-actions">
@@ -1325,12 +1325,14 @@ export const HomeView: React.FC<{
                       {thinkingDots.map((dot, index) => (
                         <span
                           key={dot.id}
-                          style={{
-                            '--dot-index': `${index}`,
-                            '--dot-x': `${dot.x}px`,
-                            '--dot-y': `${dot.y}px`,
-                            '--dot-size': `${dot.size}px`,
-                          } as DotStyle}
+                          style={
+                            {
+                              '--dot-index': `${index}`,
+                              '--dot-x': `${dot.x}px`,
+                              '--dot-y': `${dot.y}px`,
+                              '--dot-size': `${dot.size}px`,
+                            } as DotStyle
+                          }
                         />
                       ))}
                     </div>
@@ -1346,8 +1348,8 @@ export const HomeView: React.FC<{
                   metric.id === 'averageSpeed'
                     ? `${Math.round(latest)} ${metric.unit}`
                     : metric.id === 'savedThisWeek'
-                    ? `${Math.round(latest)} ${metric.unit}`
-                    : `${formatNumber(latest)} ${metric.unit}`;
+                      ? `${Math.round(latest)} ${metric.unit}`
+                      : `${formatNumber(latest)} ${metric.unit}`;
                 const firstLabel = metric.points[0]?.label ?? '';
                 const lastLabel = metric.points[metric.points.length - 1]?.label ?? '';
                 return (
@@ -1385,8 +1387,8 @@ export const HomeView: React.FC<{
           <div className="action-card">
             <h3>Start recording</h3>
             <p>
-              Hold {homeShortcuts?.pushToTalkKey ?? 'F15'} to dictate and release to paste, or
-              press {homeShortcuts?.toggleRecordingKey ?? 'F14'} to start and stop recording.
+              Hold {homeShortcuts?.pushToTalkKey ?? 'F15'} to dictate and release to paste, or press{' '}
+              {homeShortcuts?.toggleRecordingKey ?? 'F14'} to start and stop recording.
             </p>
           </div>
           <div className="action-card action-card-nav">
@@ -1546,7 +1548,7 @@ export const ModesView: React.FC = () => {
       id: `mode-${now}`,
       name: 'New mode',
       description: '',
-      model: { selection: 'fast' },
+      model: { selection: 'latest' },
       streamingEnabled: true,
       punctuationNormalization: true,
       punctuationCommandsEnabled: false,
@@ -1597,9 +1599,11 @@ export const ModesView: React.FC = () => {
   const selectedMode = selectedModeId ? modes.find((mode) => mode.id === selectedModeId) : null;
 
   const modelLabel = (mode: Mode) => {
+    if (mode.model.selection === 'latest') return 'Latest';
     if (mode.model.selection === 'fast') return 'Fast';
     if (mode.model.selection === 'accurate') return 'Accurate';
     if (mode.model.selection === 'meeting') return 'Meetings';
+    if (mode.model.selection === 'legacy') return 'Legacy Whisper';
     if (mode.model.selection === 'pinned') return 'Pinned';
     return 'Custom';
   };
@@ -1766,9 +1770,11 @@ export const ModesView: React.FC = () => {
                         })
                       }
                     >
-                      <option value="fast">Fast</option>
+                      <option value="latest">Latest (Recommended)</option>
+                      <option value="fast">GPT-4o Mini (Legacy)</option>
                       <option value="meeting">Meetings (Diarize)</option>
-                      <option value="accurate">Accurate</option>
+                      <option value="accurate">GPT-4o Accurate (Legacy)</option>
+                      <option value="legacy">Whisper (Legacy, non-streaming)</option>
                       <option value="pinned">Pinned</option>
                     </select>
                   </label>
@@ -1782,7 +1788,7 @@ export const ModesView: React.FC = () => {
                             model: { ...mode.model, pinnedModelId: event.target.value },
                           })
                         }
-                        placeholder="gpt-stt-realtime"
+                        placeholder="gpt-transcribe"
                       />
                       {!isPinnedValid(mode) && (
                         <div className="warning-text">Enter a valid model id.</div>
@@ -1932,7 +1938,11 @@ export const ModesView: React.FC = () => {
               </div>
             </div>
             <div className="mode-actions">
-              <button className="chip" onClick={() => saveMode(mode)} disabled={!isPinnedValid(mode)}>
+              <button
+                className="chip"
+                onClick={() => saveMode(mode)}
+                disabled={!isPinnedValid(mode)}
+              >
                 Save
               </button>
               <button
@@ -2087,7 +2097,8 @@ export const VocabularyView: React.FC = () => {
                   value={entry.modeId ? 'mode' : 'global'}
                   onChange={(event) =>
                     updateEntry(entry.id, {
-                      modeId: event.target.value === 'mode' ? entry.modeId ?? modes[0]?.id : undefined,
+                      modeId:
+                        event.target.value === 'mode' ? (entry.modeId ?? modes[0]?.id) : undefined,
                     })
                   }
                 >
@@ -2141,9 +2152,7 @@ export const ShortcutsView: React.FC = () => {
         setEntries(entryList);
         setModes(modeList);
         if (modeList.length) {
-          setForm((prev) =>
-            prev.modeId ? prev : { ...prev, modeId: modeList[0]?.id ?? '' }
-          );
+          setForm((prev) => (prev.modeId ? prev : { ...prev, modeId: modeList[0]?.id ?? '' }));
         }
       } catch (error) {
         console.error(error);
@@ -2255,9 +2264,7 @@ export const ShortcutsView: React.FC = () => {
             {form.scope === 'mode' && (
               <select
                 value={form.modeId}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, modeId: event.target.value }))
-                }
+                onChange={(event) => setForm((prev) => ({ ...prev, modeId: event.target.value }))}
               >
                 {modes.map((mode) => (
                   <option key={mode.id} value={mode.id}>
@@ -2346,17 +2353,11 @@ export const ShortcutsView: React.FC = () => {
 
 export const SettingsView: React.FC<{ targetSection?: SettingsTargetSection | null }> = ({
   targetSection,
-}) => (
-  <SettingsConfigView targetSection={targetSection} />
-);
+}) => <SettingsConfigView targetSection={targetSection} />;
 
-export const SoundView: React.FC = () => (
-  <SoundConfigView />
-);
+export const SoundView: React.FC = () => <SoundConfigView />;
 
-export const ModelsView: React.FC = () => (
-  <ModelsLibraryView />
-);
+export const ModelsView: React.FC = () => <ModelsLibraryView />;
 
 export const HistoryView: React.FC = () => {
   const [items, setItems] = useState<HistoryItem[]>([]);
@@ -2479,7 +2480,11 @@ export const HistoryView: React.FC = () => {
     <div className="view">
       <div className="view-header">
         <div>
-          <ViewTitle title="History" sectionId="help-history" ariaLabel="Open History help section" />
+          <ViewTitle
+            title="History"
+            sectionId="help-history"
+            ariaLabel="Open History help section"
+          />
           <p>Recent dictations saved locally for quick reuse.</p>
         </div>
       </div>
@@ -2501,11 +2506,7 @@ export const HistoryView: React.FC = () => {
           >
             Clear
           </button>
-          <button
-            className="chip"
-            onClick={handleExport}
-            disabled={!selectedIds.length}
-          >
+          <button className="chip" onClick={handleExport} disabled={!selectedIds.length}>
             Export selection
           </button>
         </div>
@@ -2551,8 +2552,8 @@ export const HistoryView: React.FC = () => {
                         {item.status === 'success'
                           ? 'Success'
                           : item.status === 'failed'
-                          ? 'Failed'
-                          : 'Cancelled'}
+                            ? 'Failed'
+                            : 'Cancelled'}
                       </span>
                       {formatLatency(item.latencyMs) && (
                         <span className="history-meta-item">

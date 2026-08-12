@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const ModeSchema = z.object({
   id: z.string(),
@@ -8,10 +8,10 @@ export const ModeSchema = z.object({
   description: z.string().optional(),
   model: z
     .object({
-      selection: z.enum(['fast', 'accurate', 'meeting', 'pinned']),
+      selection: z.enum(['latest', 'fast', 'accurate', 'meeting', 'legacy', 'pinned']),
       pinnedModelId: z.string().optional(),
     })
-    .default({ selection: 'fast' }),
+    .default({ selection: 'latest' }),
   streamingEnabled: z.boolean().default(true),
   punctuationNormalization: z.boolean().optional(),
   punctuationCommandsEnabled: z.boolean().default(false),

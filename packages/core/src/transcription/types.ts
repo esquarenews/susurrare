@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { DiarizedSegmentSchema } from '../domain/schemas';
 
 export const ModelSelectionSchema = z.object({
-  selection: z.enum(['fast', 'accurate', 'meeting', 'pinned']),
+  selection: z.enum(['latest', 'fast', 'accurate', 'meeting', 'legacy', 'pinned']),
   pinnedModelId: z.string().optional(),
 });
 export type ModelSelection = z.infer<typeof ModelSelectionSchema>;
@@ -34,7 +34,10 @@ export interface StreamingTranscriptionHandle {
 
 export interface TranscriptionClient {
   transcribe(request: TranscriptionRequest): Promise<TranscriptionEvent[]>;
-  stream(request: TranscriptionRequest, onEvent: (event: TranscriptionEvent) => void): Promise<void>;
+  stream(
+    request: TranscriptionRequest,
+    onEvent: (event: TranscriptionEvent) => void
+  ): Promise<void>;
   openStream?: (
     request: TranscriptionRequest,
     onEvent: (event: TranscriptionEvent) => void

@@ -42,6 +42,7 @@ describe('recording limits', () => {
     expect(resolveRecordingStreamingEnabled(undefined, 'meeting')).toBe(true);
     expect(resolveRecordingStreamingEnabled(false, 'fast')).toBe(false);
     expect(resolveRecordingStreamingEnabled(undefined, 'fast')).toBe(true);
+    expect(resolveRecordingStreamingEnabled(true, 'legacy')).toBe(false);
   });
 
   it('disables silence timeout for meeting mode', () => {

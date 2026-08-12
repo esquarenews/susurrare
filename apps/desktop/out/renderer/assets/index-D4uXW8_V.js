@@ -10596,15 +10596,15 @@ objectType({
   version: literalType(IPC_VERSION),
   payload: unknownType()
 });
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 objectType({
   id: stringType(),
   name: stringType(),
   description: stringType().optional(),
   model: objectType({
-    selection: enumType(["fast", "accurate", "meeting", "pinned"]),
+    selection: enumType(["latest", "fast", "accurate", "meeting", "legacy", "pinned"]),
     pinnedModelId: stringType().optional()
-  }).default({ selection: "fast" }),
+  }).default({ selection: "latest" }),
   streamingEnabled: booleanType().default(true),
   punctuationNormalization: booleanType().optional(),
   punctuationCommandsEnabled: booleanType().default(false),
@@ -10704,7 +10704,7 @@ objectType({
   payload: unknownType()
 });
 const ModelSelectionSchema = objectType({
-  selection: enumType(["fast", "accurate", "meeting", "pinned"]),
+  selection: enumType(["latest", "fast", "accurate", "meeting", "legacy", "pinned"]),
   pinnedModelId: stringType().optional()
 });
 objectType({
@@ -11128,10 +11128,7 @@ const SettingsConfigView = ({
     if (targetSection !== "keyboard-shortcuts") return;
     keyboardShortcutsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [targetSection]);
-  const permissionNotices = reactExports.useMemo(
-    () => buildPermissionNotices(permissions),
-    [permissions]
-  );
+  const permissionNotices = reactExports.useMemo(() => buildPermissionNotices(permissions), [permissions]);
   if (!settings) {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "view", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "view-header", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
@@ -11363,7 +11360,8 @@ const SettingsConfigView = ({
         ] })
       ] }, field.key)),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "shortcut-help", children: [
-        "Focus a field and press the shortcut you want, or click Capture to do the same. Example: ",
+        "Focus a field and press the shortcut you want, or click Capture to do the same. Example:",
+        " ",
         /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children: "Ctrl+Option+Space" }),
         "."
       ] })
@@ -11558,7 +11556,7 @@ const ModelsLibraryView = () => {
             ariaLabel: "Open Models Library help section"
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Pick models tuned for speed, accuracy, or meeting diarization." })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Review the recommended live and file models, plus legacy and meeting options." })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "primary", onClick: () => window.location.reload(), children: "Refresh models" })
     ] }),
@@ -11566,7 +11564,7 @@ const ModelsLibraryView = () => {
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "model-tag", children: model.id.includes("diarize") ? "Meetings" : model.speed === "fast" ? "Fast" : model.speed === "accurate" ? "Accurate" : "Balanced" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { children: model.name }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: model.id }),
-      model.speed === "fast" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tag", children: "Recommended default" }),
+      (model.id === "gpt-live-transcribe" || model.id === "gpt-transcribe") && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tag", children: "Recommended" }),
       model.id.includes("diarize") && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tag", children: "Best for multi-speaker notes" })
     ] }, model.id)) }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card", children: [
@@ -11576,7 +11574,7 @@ const ModelsLibraryView = () => {
         "input",
         {
           className: `search ${warning ? "input-warning" : ""}`,
-          placeholder: "gpt-4o-mini-transcribe",
+          placeholder: "gpt-transcribe",
           value: pinned,
           onChange: (event) => setPinned(event.target.value)
         }
@@ -11613,7 +11611,10 @@ const summarizeRange = (items, rangeStart, rangeEnd) => {
     words: wordCounts[index],
     durationMs: item.audioDurationMs ?? 0
   })).filter((sample) => sample.words > 0 && sample.durationMs > 0);
-  const averageSpeed = speedSamples.length ? speedSamples.reduce((total, sample) => total + sample.words / (sample.durationMs / 6e4), 0) / speedSamples.length : 0;
+  const averageSpeed = speedSamples.length ? speedSamples.reduce(
+    (total, sample) => total + sample.words / (sample.durationMs / 6e4),
+    0
+  ) / speedSamples.length : 0;
   const totalDurationMs = rangeItems.reduce((total, item, index) => {
     if (item.audioDurationMs) return total + item.audioDurationMs;
     const wordsInItem = wordCounts[index];
@@ -11732,17 +11733,10 @@ const LineChart = ({ points, formatValue }) => {
         ]
       }
     ),
-    hover && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
-      {
-        className: "stats-tooltip",
-        style: { left: `${hover.x}px`, top: `${hover.y}px` },
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: hover.label }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: hover.value })
-        ]
-      }
-    )
+    hover && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "stats-tooltip", style: { left: `${hover.x}px`, top: `${hover.y}px` }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: hover.label }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: hover.value })
+    ] })
   ] });
 };
 const buildPerformanceSummary = (series) => {
@@ -11869,7 +11863,14 @@ const HomeView = ({ stats, historyItems, onNavigate }) => {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "view", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "view-header", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(ViewTitle, { title: "Home", sectionId: "help-home-section", ariaLabel: "Open Home help section" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          ViewTitle,
+          {
+            title: "Home",
+            sectionId: "help-home-section",
+            ariaLabel: "Open Home help section"
+          }
+        ),
         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Your dictation activity snapshot and quick-start actions." })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "view-header-actions", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chip stats-trends-button", onClick: () => setShowTrends(true), children: "View my stats" }) })
@@ -11971,7 +11972,8 @@ const HomeView = ({ stats, historyItems, onNavigate }) => {
           /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
             "Hold ",
             homeShortcuts?.pushToTalkKey ?? "F15",
-            " to dictate and release to paste, or press ",
+            " to dictate and release to paste, or press",
+            " ",
             homeShortcuts?.toggleRecordingKey ?? "F14",
             " to start and stop recording."
           ] })
@@ -12117,7 +12119,7 @@ const ModesView = () => {
       id: `mode-${now}`,
       name: "New mode",
       description: "",
-      model: { selection: "fast" },
+      model: { selection: "latest" },
       streamingEnabled: true,
       punctuationNormalization: true,
       punctuationCommandsEnabled: false,
@@ -12164,9 +12166,11 @@ const ModesView = () => {
   };
   const selectedMode = selectedModeId ? modes.find((mode) => mode.id === selectedModeId) : null;
   const modelLabel = (mode) => {
+    if (mode.model.selection === "latest") return "Latest";
     if (mode.model.selection === "fast") return "Fast";
     if (mode.model.selection === "accurate") return "Accurate";
     if (mode.model.selection === "meeting") return "Meetings";
+    if (mode.model.selection === "legacy") return "Legacy Whisper";
     if (mode.model.selection === "pinned") return "Pinned";
     return "Custom";
   };
@@ -12309,9 +12313,11 @@ const ModesView = () => {
                       }
                     }),
                     children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "fast", children: "Fast" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "latest", children: "Latest (Recommended)" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "fast", children: "GPT-4o Mini (Legacy)" }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "meeting", children: "Meetings (Diarize)" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "accurate", children: "Accurate" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "accurate", children: "GPT-4o Accurate (Legacy)" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "legacy", children: "Whisper (Legacy, non-streaming)" }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "pinned", children: "Pinned" })
                     ]
                   }
@@ -12326,7 +12332,7 @@ const ModesView = () => {
                     onChange: (event) => updateMode(mode.id, {
                       model: { ...mode.model, pinnedModelId: event.target.value }
                     }),
-                    placeholder: "gpt-stt-realtime"
+                    placeholder: "gpt-transcribe"
                   }
                 ),
                 !isPinnedValid(mode) && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "warning-text", children: "Enter a valid model id." })
@@ -12474,7 +12480,15 @@ const ModesView = () => {
           ] })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mode-actions", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chip", onClick: () => saveMode(mode), disabled: !isPinnedValid(mode), children: "Save" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              className: "chip",
+              onClick: () => saveMode(mode),
+              disabled: !isPinnedValid(mode),
+              children: "Save"
+            }
+          ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "button",
             {
@@ -12665,9 +12679,7 @@ const ShortcutsView = () => {
         setEntries(entryList);
         setModes(modeList);
         if (modeList.length) {
-          setForm(
-            (prev) => prev.modeId ? prev : { ...prev, modeId: modeList[0]?.id ?? "" }
-          );
+          setForm((prev) => prev.modeId ? prev : { ...prev, modeId: modeList[0]?.id ?? "" });
         }
       } catch (error) {
         console.error(error);
@@ -12952,7 +12964,14 @@ const HistoryView = () => {
   };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "view", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "view-header", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(ViewTitle, { title: "History", sectionId: "help-history", ariaLabel: "Open History help section" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        ViewTitle,
+        {
+          title: "History",
+          sectionId: "help-history",
+          ariaLabel: "Open History help section"
+        }
+      ),
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Recent dictations saved locally for quick reuse." })
     ] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "history-toolbar", children: [
@@ -12976,15 +12995,7 @@ const HistoryView = () => {
             children: "Clear"
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "button",
-          {
-            className: "chip",
-            onClick: handleExport,
-            disabled: !selectedIds.length,
-            children: "Export selection"
-          }
-        )
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chip", onClick: handleExport, disabled: !selectedIds.length, children: "Export selection" })
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "history-input", children: [

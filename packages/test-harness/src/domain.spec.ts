@@ -27,14 +27,14 @@ describe('domain schemas', () => {
   });
 
   it('parses core entities', () => {
-    expect(
-      ModeSchema.parse({
-        id: 'mode-1',
-        name: 'Default',
-        createdAt: 0,
-        updatedAt: 0,
-      }).name
-    ).toBe('Default');
+    const mode = ModeSchema.parse({
+      id: 'mode-1',
+      name: 'Default',
+      createdAt: 0,
+      updatedAt: 0,
+    });
+    expect(mode.name).toBe('Default');
+    expect(mode.model.selection).toBe('latest');
 
     expect(
       HistoryItemSchema.parse({
