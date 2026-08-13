@@ -31,6 +31,14 @@ test('navigation and CRUD basics', async () => {
     await page.getByRole('button', { name: 'New mode', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'New mode' }).first()).toBeVisible();
     await expect(page.getByLabel('Model')).toHaveValue('latest');
+    await expect(
+      page.getByRole('option', { name: 'GPT Live / GPT Transcribe (Recommended)' })
+    ).toBeAttached();
+    await expect(
+      page.getByText(
+        'Uses GPT Live Transcribe when streaming is on and GPT Transcribe when streaming is off.'
+      )
+    ).toBeVisible();
 
     await page.getByRole('button', { name: 'Models Library' }).click();
     await expect(page.getByRole('heading', { name: /^Models Library\b/ })).toBeVisible();

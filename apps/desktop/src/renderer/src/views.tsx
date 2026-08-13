@@ -1599,7 +1599,7 @@ export const ModesView: React.FC = () => {
   const selectedMode = selectedModeId ? modes.find((mode) => mode.id === selectedModeId) : null;
 
   const modelLabel = (mode: Mode) => {
-    if (mode.model.selection === 'latest') return 'Latest';
+    if (mode.model.selection === 'latest') return 'GPT Live / GPT Transcribe';
     if (mode.model.selection === 'fast') return 'Fast';
     if (mode.model.selection === 'accurate') return 'Accurate';
     if (mode.model.selection === 'meeting') return 'Meetings';
@@ -1770,13 +1770,19 @@ export const ModesView: React.FC = () => {
                         })
                       }
                     >
-                      <option value="latest">Latest (Recommended)</option>
+                      <option value="latest">GPT Live / GPT Transcribe (Recommended)</option>
                       <option value="fast">GPT-4o Mini (Legacy)</option>
                       <option value="meeting">Meetings (Diarize)</option>
                       <option value="accurate">GPT-4o Accurate (Legacy)</option>
                       <option value="legacy">Whisper (Legacy, non-streaming)</option>
                       <option value="pinned">Pinned</option>
                     </select>
+                    {mode.model.selection === 'latest' && (
+                      <span className="mode-model-help">
+                        Uses GPT Live Transcribe when streaming is on and GPT Transcribe when
+                        streaming is off.
+                      </span>
+                    )}
                   </label>
                   {mode.model.selection === 'pinned' && (
                     <label className="mode-field">

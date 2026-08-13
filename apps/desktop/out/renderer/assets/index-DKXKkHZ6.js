@@ -12166,7 +12166,7 @@ const ModesView = () => {
   };
   const selectedMode = selectedModeId ? modes.find((mode) => mode.id === selectedModeId) : null;
   const modelLabel = (mode) => {
-    if (mode.model.selection === "latest") return "Latest";
+    if (mode.model.selection === "latest") return "GPT Live / GPT Transcribe";
     if (mode.model.selection === "fast") return "Fast";
     if (mode.model.selection === "accurate") return "Accurate";
     if (mode.model.selection === "meeting") return "Meetings";
@@ -12313,7 +12313,7 @@ const ModesView = () => {
                       }
                     }),
                     children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "latest", children: "Latest (Recommended)" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "latest", children: "GPT Live / GPT Transcribe (Recommended)" }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "fast", children: "GPT-4o Mini (Legacy)" }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "meeting", children: "Meetings (Diarize)" }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "accurate", children: "GPT-4o Accurate (Legacy)" }),
@@ -12321,7 +12321,8 @@ const ModesView = () => {
                       /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "pinned", children: "Pinned" })
                     ]
                   }
-                )
+                ),
+                mode.model.selection === "latest" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mode-model-help", children: "Uses GPT Live Transcribe when streaming is on and GPT Transcribe when streaming is off." })
               ] }),
               mode.model.selection === "pinned" && /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "mode-field", children: [
                 "Pinned model ID",
