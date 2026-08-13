@@ -22479,6 +22479,7 @@ const buildTrayMenuModel = (options) => {
   ];
 };
 const isOverlayDraggableState = (state2) => state2 === "recording";
+const shouldAnimateOverlayState = (state2) => state2 !== "idle";
 const getOverlayStatusLabel = (state2) => state2 === "done" ? "idle" : state2;
 const shouldRequireVisibleWindowForOverlayChannel = (channel) => channel === "levels";
 const getOverlayDefaultPosition = (workArea, overlayWidth, topMargin = 24) => ({
@@ -22836,6 +22837,8 @@ const overlayHtml = () => `
       let timerRunning = false;
       let timerVisible = false;
       let timerInterval = null;
+      let animationActive = false;
+      let animationFrame = null;
 
       const formatTimer = (milliseconds) => {
         const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
@@ -22973,6 +22976,10 @@ const overlayHtml = () => `
       };
 
       const draw = () => {
+        if (!animationActive) {
+          animationFrame = null;
+          return;
+        }
         meterDisplayed = meterDisplayed.map((value, index) => {
           const target = state === 'recording' ? resolveRecordingTarget(index) : 0;
           const attack = state === 'recording' ? 0.82 + (index % 2) * 0.04 : 0.32;
@@ -23001,15 +23008,27 @@ const overlayHtml = () => `
         });
 
         phase += state === 'recording' ? 0.18 : 0.12;
-        requestAnimationFrame(draw);
+        animationFrame = requestAnimationFrame(draw);
+      };
+
+      const setAnimationActive = (active) => {
+        const next = active === true;
+        if (next === animationActive) return;
+        animationActive = next;
+        if (animationActive) {
+          if (animationFrame === null) animationFrame = requestAnimationFrame(draw);
+          return;
+        }
+        if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+        animationFrame = null;
       };
 
       window.__setOverlayState = setState;
       window.__setOverlayLevels = setLevels;
       window.__setOverlayText = setText;
       window.__setOverlayMode = setMode;
+      window.__setOverlayAnimationActive = setAnimationActive;
       syncTimer();
-      draw();
     <\/script>
   </body>
 </html>
@@ -23031,6 +23050,16 @@ const waitForOverlayReady = async () => {
   if (overlayReady) return;
   try {
     await overlayLoadPromise;
+  } catch {
+  }
+};
+const setOverlayAnimationActive = async (active) => {
+  if (!overlayWindow || overlayWindow.isDestroyed() || !overlayReady) return;
+  if (overlayWindow.webContents.isDestroyed()) return;
+  try {
+    await overlayWindow.webContents.executeJavaScript(
+      `window.__setOverlayAnimationActive(${JSON.stringify(active)})`
+    );
   } catch {
   }
 };
@@ -23493,6 +23522,7 @@ const macosAdapter = {
         overlayText = "";
         pendingOverlayLevels = null;
         await waitForOverlayReady();
+        await setOverlayAnimationActive(false);
         overlayWindow.setOpacity(0);
         overlayWindow.hide();
         return;
@@ -23505,6 +23535,7 @@ const macosAdapter = {
         positionOverlayWindowAtDefault();
       }
       await updateOverlayState(state2);
+      await setOverlayAnimationActive(shouldAnimateOverlayState(state2));
       if (overlayMode) {
         await updateOverlayMode(overlayMode);
       }
@@ -23516,6 +23547,7 @@ const macosAdapter = {
     async hide() {
       if (!overlayWindow) return;
       if (!overlayWindow.isDestroyed()) {
+        await setOverlayAnimationActive(false);
         overlayWindow.setOpacity(0);
         overlayWindow.hide();
       }
@@ -38277,6 +38309,10 @@ const getMainWindow = () => {
     return null;
   }
 };
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+}
 const createWindow = () => {
   const devServerOrigin = resolveDevServerOrigin();
   const win = new BrowserWindow({
@@ -38323,7 +38359,20 @@ const createWindow = () => {
   attachLocalHotkeys(win);
   sendRecordingStatus("idle");
   updateTrayMenu();
+  return win;
 };
+const showOrCreateMainWindow = () => {
+  const win = getMainWindow() ?? createWindow();
+  if (win.isMinimized()) win.restore();
+  if (!win.isVisible()) win.show();
+  app.focus({ steal: true });
+  win.focus();
+  return win;
+};
+app.on("second-instance", () => {
+  if (!hasSingleInstanceLock) return;
+  showOrCreateMainWindow();
+});
 const applyLoginItemSettings = () => {
   if (process.platform !== "darwin") return;
   app.setLoginItemSettings({ openAtLogin: settings.launchOnLogin });
@@ -39848,6 +39897,7 @@ ipcMain.handle(IpcChannels.statsSummary, async (_event, envelope) => {
   }
 });
 app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) return;
   app.setName(APP_BRAND_NAME);
   ensureLogDirectory();
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
@@ -39928,7 +39978,7 @@ app.whenReady().then(async () => {
   sendHistoryUpdated();
   app.on("activate", () => {
     void registerHotkeys();
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    showOrCreateMainWindow();
     if (!recordingActive) {
       if (shouldShowOverlay()) {
         platformAdapter.overlay.show("idle").catch(() => void 0);

@@ -2,6 +2,8 @@ import type { OverlayState } from './index';
 
 export const isOverlayDraggableState = (state: OverlayState) => state === 'recording';
 
+export const shouldAnimateOverlayState = (state: OverlayState | 'done') => state !== 'idle';
+
 export type OverlayDisplayState = OverlayState | 'done';
 export type OverlayWindowChannel = 'levels' | 'text' | 'mode';
 

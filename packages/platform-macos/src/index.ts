@@ -10,6 +10,7 @@ import {
   getOverlayStatusLabel,
   isOverlayDraggableState,
   mapWaveToVocsenOverlayLevels,
+  shouldAnimateOverlayState,
   shouldRequireVisibleWindowForOverlayChannel,
   type PlatformAdapter,
 } from '@susurrare/platform';
@@ -378,6 +379,8 @@ const overlayHtml = () => `
       let timerRunning = false;
       let timerVisible = false;
       let timerInterval = null;
+      let animationActive = false;
+      let animationFrame = null;
 
       const formatTimer = (milliseconds) => {
         const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
@@ -515,6 +518,10 @@ const overlayHtml = () => `
       };
 
       const draw = () => {
+        if (!animationActive) {
+          animationFrame = null;
+          return;
+        }
         meterDisplayed = meterDisplayed.map((value, index) => {
           const target = state === 'recording' ? resolveRecordingTarget(index) : 0;
           const attack = state === 'recording' ? 0.82 + (index % 2) * 0.04 : 0.32;
@@ -543,15 +550,27 @@ const overlayHtml = () => `
         });
 
         phase += state === 'recording' ? 0.18 : 0.12;
-        requestAnimationFrame(draw);
+        animationFrame = requestAnimationFrame(draw);
+      };
+
+      const setAnimationActive = (active) => {
+        const next = active === true;
+        if (next === animationActive) return;
+        animationActive = next;
+        if (animationActive) {
+          if (animationFrame === null) animationFrame = requestAnimationFrame(draw);
+          return;
+        }
+        if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+        animationFrame = null;
       };
 
       window.__setOverlayState = setState;
       window.__setOverlayLevels = setLevels;
       window.__setOverlayText = setText;
       window.__setOverlayMode = setMode;
+      window.__setOverlayAnimationActive = setAnimationActive;
       syncTimer();
-      draw();
     </script>
   </body>
 </html>
@@ -576,6 +595,18 @@ const waitForOverlayReady = async () => {
   if (overlayReady) return;
   try {
     await overlayLoadPromise;
+  } catch {
+    // ignore overlay lifecycle races
+  }
+};
+
+const setOverlayAnimationActive = async (active: boolean) => {
+  if (!overlayWindow || overlayWindow.isDestroyed() || !overlayReady) return;
+  if (overlayWindow.webContents.isDestroyed()) return;
+  try {
+    await overlayWindow.webContents.executeJavaScript(
+      `window.__setOverlayAnimationActive(${JSON.stringify(active)})`
+    );
   } catch {
     // ignore overlay lifecycle races
   }
@@ -1072,6 +1103,7 @@ export const macosAdapter: PlatformAdapter = {
         overlayText = '';
         pendingOverlayLevels = null;
         await waitForOverlayReady();
+        await setOverlayAnimationActive(false);
         overlayWindow.setOpacity(0);
         overlayWindow.hide();
         return;
@@ -1084,6 +1116,7 @@ export const macosAdapter: PlatformAdapter = {
         positionOverlayWindowAtDefault();
       }
       await updateOverlayState(state);
+      await setOverlayAnimationActive(shouldAnimateOverlayState(state));
       if (overlayMode) {
         await updateOverlayMode(overlayMode);
       }
@@ -1095,6 +1128,7 @@ export const macosAdapter: PlatformAdapter = {
     async hide() {
       if (!overlayWindow) return;
       if (!overlayWindow.isDestroyed()) {
+        await setOverlayAnimationActive(false);
         overlayWindow.setOpacity(0);
         overlayWindow.hide();
       }

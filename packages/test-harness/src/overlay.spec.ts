@@ -5,6 +5,7 @@ import {
   getOverlayStatusLabel,
   isOverlayDraggableState,
   mapWaveToVocsenOverlayLevels,
+  shouldAnimateOverlayState,
   shouldRequireVisibleWindowForOverlayChannel,
 } from '../../platform/src/overlay';
 
@@ -21,6 +22,13 @@ describe('overlay interaction policy', () => {
     expect(getOverlayStatusLabel('processing')).toBe('processing');
     expect(getOverlayStatusLabel('idle')).toBe('idle');
     expect(getOverlayStatusLabel('done')).toBe('idle');
+  });
+
+  it('does not animate the hidden idle overlay', () => {
+    expect(shouldAnimateOverlayState('idle')).toBe(false);
+    expect(shouldAnimateOverlayState('recording')).toBe(true);
+    expect(shouldAnimateOverlayState('processing')).toBe(true);
+    expect(shouldAnimateOverlayState('done')).toBe(true);
   });
 
   it('allows mode and transcript updates before the overlay becomes visible', () => {

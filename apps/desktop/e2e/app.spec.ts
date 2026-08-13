@@ -50,6 +50,22 @@ test('navigation and CRUD basics', async () => {
 
     await page.getByRole('button', { name: 'History' }).click();
     await expect(page.getByRole('heading', { name: /^History\b/ })).toBeVisible();
+
+    await page.close();
+    await expect.poll(() => app.windows().some((window) => window.url().startsWith('file:'))).toBe(
+      false
+    );
+
+    await app.evaluate(({ app: electronApp }) => {
+      electronApp.emit('activate');
+    });
+
+    await expect
+      .poll(() => app.windows().some((window) => window.url().startsWith('file:')))
+      .toBe(true);
+    const reopenedPage = app.windows().find((window) => window.url().startsWith('file:'));
+    if (!reopenedPage) throw new Error('Vocsen main window did not reopen');
+    await expect(reopenedPage.getByRole('heading', { name: /^Home\b/ })).toBeVisible();
   } finally {
     await app.close();
     await rm(userDataDir, { recursive: true, force: true });

@@ -380,6 +380,11 @@ const getMainWindow = () => {
   }
 };
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+}
+
 const createWindow = () => {
   const devServerOrigin = resolveDevServerOrigin();
   const win = new BrowserWindow({
@@ -432,7 +437,22 @@ const createWindow = () => {
   attachLocalHotkeys(win);
   sendRecordingStatus('idle');
   updateTrayMenu();
+  return win;
 };
+
+const showOrCreateMainWindow = () => {
+  const win = getMainWindow() ?? createWindow();
+  if (win.isMinimized()) win.restore();
+  if (!win.isVisible()) win.show();
+  app.focus({ steal: true });
+  win.focus();
+  return win;
+};
+
+app.on('second-instance', () => {
+  if (!hasSingleInstanceLock) return;
+  showOrCreateMainWindow();
+});
 
 const applyLoginItemSettings = () => {
   if (process.platform !== 'darwin') return;
@@ -2086,6 +2106,7 @@ ipcMain.handle(IpcChannels.statsSummary, async (_event, envelope) => {
 });
 
 app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) return;
   app.setName(APP_BRAND_NAME);
   ensureLogDirectory();
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
@@ -2168,7 +2189,7 @@ app.whenReady().then(async () => {
 
   app.on('activate', () => {
     void registerHotkeys();
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    showOrCreateMainWindow();
     if (!recordingActive) {
       if (shouldShowOverlay()) {
         platformAdapter.overlay.show('idle').catch(() => undefined);
